@@ -4,6 +4,24 @@
 - [현상][원인][조치] 태그 추출 + 2+ 개행으로 항목 분리
 - SQLite 적재 + CSV 내보내기 → SQream 이관
 - 시스템 트레이 + tkinter 다크 테마 팝업 UI
+
+필요 라이브러리:
+    pip install pystray pywin32 Pillow
+
+빌드 (단일 exe):
+    pip install pyinstaller
+    pyinstaller --onefile --noconsole --name word_crawler word_crawler.py
+
+실행:
+    python word_crawler.py
+    (빌드 후) word_crawler.exe
+
+파일 구조 (실행 시 자동 생성):
+    word_crawler.exe (또는 .py)
+    autosave/
+    ├── facility_daily.db    ← SQLite DB
+    ├── word_crawler.lock    ← 단일 인스턴스 락
+    └── *.csv                ← 내보낸 CSV 파일
 """
 import os
 import sys
@@ -91,12 +109,18 @@ def init_db(db_path=None):
             header4          TEXT,
             val4             TEXT,
             content_hash     TEXT,
-            created_at       TEXT DEFAULT (datetime('now', 'localtime'))
+            created_at       TEXT DEFAULT (datetime('now', 'localtime')),
+            exported_at      TEXT
         )
     ''')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_fd_date ON facility_daily(date)')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_fd_source ON facility_daily(source_file)')
     conn.execute('CREATE INDEX IF NOT EXISTS idx_fd_hash ON facility_daily(content_hash)')
+    # 기존 DB 마이그레이션: exported_at 컬럼 없으면 추가
+    try:
+        conn.execute('ALTER TABLE facility_daily ADD COLUMN exported_at TEXT')
+    except Exception:
+        pass
     conn.commit()
     conn.close()
 
@@ -181,8 +205,8 @@ def export_csv(db_path, output_path, start_date=None, end_date=None):
         query += ' WHERE ' + ' AND '.join(conds)
     query += ' ORDER BY date, id'
     rows = conn.execute(query, params).fetchall()
-    conn.close()
     if not rows:
+        conn.close()
         return 0
     keys = rows[0].keys()
     with open(output_path, 'w', newline='', encoding='utf-8-sig') as f:
@@ -190,7 +214,36 @@ def export_csv(db_path, output_path, start_date=None, end_date=None):
         writer.writeheader()
         for row in rows:
             writer.writerow(dict(row))
+    # 내보낸 레코드에 exported_at 기록
+    ids = [row['id'] for row in rows]
+    placeholders = ','.join('?' for _ in ids)
+    conn.execute(
+        f"UPDATE facility_daily SET exported_at = datetime('now','localtime') WHERE id IN ({placeholders})",
+        ids)
+    conn.commit()
+    conn.close()
     return len(rows)
+
+
+def get_export_status_by_date(db_path):
+    """날짜별 내보내기 상태 반환. {date: 'all'|'partial'|'none'}"""
+    conn = sqlite3.connect(db_path)
+    rows = conn.execute('''
+        SELECT date,
+               COUNT(*) as total,
+               COUNT(exported_at) as exported
+        FROM facility_daily GROUP BY date
+    ''').fetchall()
+    conn.close()
+    result = {}
+    for date, total, exported in rows:
+        if exported == 0:
+            result[date] = 'none'
+        elif exported >= total:
+            result[date] = 'all'
+        else:
+            result[date] = 'partial'
+    return result
 
 # ─────────────────────────────────────────────
 # Parser
@@ -365,6 +418,18 @@ class WordWatcher:
             word = win32com.client.GetActiveObject('Word.Application')
         except Exception:
             return
+
+        # 현재 열려있는 문서 목록 수집
+        current_docs = set()
+        for i in range(1, word.Documents.Count + 1):
+            try:
+                current_docs.add(word.Documents(i).FullName)
+            except Exception:
+                pass
+
+        # 닫힌 문서를 _seen_docs에서 제거 → 다시 열면 재파싱 가능
+        self._seen_docs -= (self._seen_docs - current_docs)
+
         for i in range(1, word.Documents.Count + 1):
             doc = word.Documents(i)
             doc_full = doc.FullName
@@ -737,14 +802,34 @@ class ParseResultPopup:
             d = rec.get('date', '')
             date_set[d] = date_set.get(d, 0) + 1
 
-        # 날짜 목록
+        # 내보내기 상태 조회
+        export_status = {}
+        if self.db_path:
+            try:
+                export_status = get_export_status_by_date(self.db_path)
+            except Exception:
+                pass
+
+        # 날짜 목록: ● 신규 / ✓ 내보내기완료 / ◐ 부분내보내기 / 빈칸 미내보내기
         self._date_listbox.delete(0, 'end')
         for d in sorted(date_set.keys(), reverse=True):
-            label = f'{"● " if d in new_dates else "  "}{d} ({date_set[d]})'
-            self._date_listbox.insert('end', label)
             if d in new_dates:
-                idx = self._date_listbox.size() - 1
+                prefix = '● '
+            elif export_status.get(d) == 'all':
+                prefix = '✓ '
+            elif export_status.get(d) == 'partial':
+                prefix = '◐ '
+            else:
+                prefix = '  '
+            label = f'{prefix}{d} ({date_set[d]})'
+            self._date_listbox.insert('end', label)
+            idx = self._date_listbox.size() - 1
+            if d in new_dates:
                 self._date_listbox.itemconfig(idx, fg=C['green'])
+            elif export_status.get(d) == 'all':
+                self._date_listbox.itemconfig(idx, fg=C['accent'])
+            elif export_status.get(d) == 'partial':
+                self._date_listbox.itemconfig(idx, fg=C['amber'])
 
         # Treeview
         self._tree.delete(*self._tree.get_children())
@@ -927,6 +1012,13 @@ class ParseResultPopup:
             return
         count = export_csv(self.db_path, path, start_date=sd, end_date=ed)
         messagebox.showinfo('완료', f'{count}건 내보내기 완료\n경로: {path}', parent=self._root)
+        # 내보내기 후 DB 이력 재로드 + 날짜 목록 갱신 (내보내기 상태 반영)
+        if self.db_path:
+            try:
+                self._db_records = get_recent_history(self.db_path)
+            except Exception:
+                pass
+        self._refresh_tree()
 
     def _on_close(self):
         self._alive = False

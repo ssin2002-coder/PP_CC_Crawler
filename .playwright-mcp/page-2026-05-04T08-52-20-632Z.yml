@@ -1,0 +1,154 @@
+- generic [active] [ref=e1]:
+  - generic [ref=e2]:
+    - heading "설비일보 Word 크롤러 — UI 목업" [level=1] [ref=e3]
+    - paragraph [ref=e4]: tkinter + pystray 기반 · 트레이 상주 → 뷰어 열기 시 표시
+  - generic [ref=e5]:
+    - generic [ref=e6]: i
+    - generic [ref=e7]:
+      - strong [ref=e8]: 팝업 표시 조건
+      - text: — ① 트레이 우클릭 → "파싱 뷰어 열기" 클릭 | ② 확인 후 저장 모드에서 새 파일 파싱 시 자동 오픈
+  - generic [ref=e9]:
+    - generic [ref=e11]:
+      - generic [ref=e12]: W
+      - generic [ref=e13]: 설비일보 파서
+    - generic [ref=e18]:
+      - generic [ref=e19]:
+        - text: 전체 이력
+        - strong [ref=e20]: "148"
+        - text: 건 · 신규 파싱
+        - strong [ref=e21]: "12"
+        - text: 건 (1파일)
+      - generic [ref=e22]: ● 감지 중
+    - generic [ref=e23]:
+      - generic [ref=e24]:
+        - generic [ref=e25]: 날짜 목록
+        - generic [ref=e26]:
+          - generic [ref=e27] [cursor=pointer]:
+            - generic [ref=e28]: 2024-05-03
+            - generic [ref=e29]: "12"
+          - generic [ref=e30] [cursor=pointer]:
+            - generic [ref=e31]: 2024-04-28
+            - generic [ref=e32]: "9"
+          - generic [ref=e33] [cursor=pointer]:
+            - generic [ref=e34]: 2024-04-25
+            - generic [ref=e35]: "15"
+          - generic [ref=e36] [cursor=pointer]:
+            - generic [ref=e37]: 2024-04-22
+            - generic [ref=e38]: "11"
+          - generic [ref=e39] [cursor=pointer]:
+            - generic [ref=e40]: 2024-04-20
+            - generic [ref=e41]: "8"
+          - generic [ref=e42] [cursor=pointer]:
+            - generic [ref=e43]: 2024-04-18
+            - generic [ref=e44]: "14"
+          - generic [ref=e45] [cursor=pointer]:
+            - generic [ref=e46]: 2024-04-15
+            - generic [ref=e47]: "10"
+          - generic [ref=e48] [cursor=pointer]:
+            - generic [ref=e49]: 2024-04-12
+            - generic [ref=e50]: "7"
+          - generic [ref=e51] [cursor=pointer]:
+            - generic [ref=e52]: 2024-04-10
+            - generic [ref=e53]: "13"
+        - button "전체 보기" [ref=e55] [cursor=pointer]
+      - table [ref=e57]:
+        - rowgroup [ref=e58]:
+          - row "날짜 구분 영역 항목 (item_text) 원문 (raw_cell) 비고" [ref=e59]:
+            - columnheader "날짜" [ref=e60]
+            - columnheader "구분" [ref=e61]
+            - columnheader "영역" [ref=e62]
+            - columnheader "항목 (item_text)" [ref=e63]
+            - columnheader "원문 (raw_cell)" [ref=e64]
+            - columnheader "비고" [ref=e65]
+        - rowgroup [ref=e66]:
+          - 'row "2024-05-03 Day A동 AHU-3 이상진동 발생 베어링 마모 추정 AHU-3 이상진동 발생 베어링 마모 추정 ∥ 보일러 #2 압력 불안정... 베어링 발주" [ref=e67]':
+            - cell "2024-05-03" [ref=e68]
+            - cell "Day" [ref=e69]
+            - cell "A동" [ref=e70]
+            - cell "AHU-3 이상진동 발생 베어링 마모 추정" [ref=e71]
+            - 'cell "AHU-3 이상진동 발생 베어링 마모 추정 ∥ 보일러 #2 압력 불안정..." [ref=e72]'
+            - cell "베어링 발주" [ref=e73]
+          - 'row "2024-05-03 Day A동 보일러 #2 압력 불안정 밸브 점검 필요 AHU-3 이상진동 발생 베어링 마모 추정 ∥ 보일러 #2 압력 불안정... 베어링 발주" [ref=e74]':
+            - cell "2024-05-03" [ref=e75]
+            - cell "Day" [ref=e76]
+            - cell "A동" [ref=e77]
+            - 'cell "보일러 #2 압력 불안정 밸브 점검 필요" [ref=e78]'
+            - 'cell "AHU-3 이상진동 발생 베어링 마모 추정 ∥ 보일러 #2 압력 불안정..." [ref=e79]'
+            - cell "베어링 발주" [ref=e80]
+          - row "2024-05-03 Day B동 FCU 드레인 오버플로우 배관 청소 완료 FCU 드레인 오버플로우 배관 청소 완료 베어링 발주" [ref=e81]:
+            - cell "2024-05-03" [ref=e82]
+            - cell "Day" [ref=e83]
+            - cell "B동" [ref=e84]
+            - cell "FCU 드레인 오버플로우 배관 청소 완료" [ref=e85]
+            - cell "FCU 드레인 오버플로우 배관 청소 완료" [ref=e86]
+            - cell "베어링 발주" [ref=e87]
+          - row "2024-05-03 Night A동 냉각탑 팬 이상음 확인중 냉각탑 팬 이상음 확인중 ∥ 집수정 수위 상승 배수펌프 가동" [ref=e88]:
+            - cell "2024-05-03" [ref=e89]
+            - cell "Night" [ref=e90]
+            - cell "A동" [ref=e91]
+            - cell "냉각탑 팬 이상음 확인중" [ref=e92]
+            - cell "냉각탑 팬 이상음 확인중 ∥ 집수정 수위 상승 배수펌프 가동" [ref=e93]
+            - cell [ref=e94]
+          - row "2024-05-03 Night A동 집수정 수위 상승 배수펌프 가동 냉각탑 팬 이상음 확인중 ∥ 집수정 수위 상승 배수펌프 가동" [ref=e95]:
+            - cell "2024-05-03" [ref=e96]
+            - cell "Night" [ref=e97]
+            - cell "A동" [ref=e98]
+            - cell "집수정 수위 상승 배수펌프 가동" [ref=e99]
+            - cell "냉각탑 팬 이상음 확인중 ∥ 집수정 수위 상승 배수펌프 가동" [ref=e100]
+            - cell [ref=e101]
+          - row "2024-05-03 Night B동 특이사항 없음 특이사항 없음" [ref=e102]:
+            - cell "2024-05-03" [ref=e103]
+            - cell "Night" [ref=e104]
+            - cell "B동" [ref=e105]
+            - cell "특이사항 없음" [ref=e106]
+            - cell "특이사항 없음" [ref=e107]
+            - cell [ref=e108]
+          - row "2024-05-03 Off A동 EHP 실외기 점검 완료 EHP 실외기 점검 완료 정기점검" [ref=e109]:
+            - cell "2024-05-03" [ref=e110]
+            - cell "Off" [ref=e111]
+            - cell "A동" [ref=e112]
+            - cell "EHP 실외기 점검 완료" [ref=e113]
+            - cell "EHP 실외기 점검 완료" [ref=e114]
+            - cell "정기점검" [ref=e115]
+    - generic [ref=e116]:
+      - button "선택 행 삭제" [ref=e118] [cursor=pointer]
+      - generic [ref=e119]:
+        - button "스킵" [ref=e120] [cursor=pointer]
+        - button "저장" [ref=e121] [cursor=pointer]
+  - generic [ref=e122]:
+    - generic [ref=e123]:
+      - generic [ref=e124]: 시스템 트레이 (항상 상주)
+      - generic [ref=e125]:
+        - generic [ref=e131] [cursor=pointer]: W ✓
+        - generic [ref=e132]:
+          - generic [ref=e135]:
+            - generic [ref=e136]: 파싱 성공
+            - generic [ref=e137]: 설비일보 2024-05-03 파싱 완료 (12건)
+          - generic [ref=e140]:
+            - generic [ref=e141]: 중복 감지
+            - generic [ref=e142]: 이미 파싱된 파일입니다 (2024-05-03)
+          - generic [ref=e145]:
+            - generic [ref=e146]: 파싱 실패
+            - generic [ref=e147]: "파싱 대상 아님: 회의록_0503.docx"
+    - generic [ref=e148]:
+      - generic [ref=e149]: CSV 내보내기
+      - generic [ref=e150]:
+        - generic [ref=e151]:
+          - generic [ref=e152]: 범위 선택
+          - combobox [ref=e153]:
+            - option "날짜 범위 지정" [selected]
+            - option "전체 내보내기"
+        - generic [ref=e154]:
+          - generic [ref=e155]:
+            - generic [ref=e156]: 시작일
+            - textbox [ref=e157]: 2024-04-01
+          - generic [ref=e158]:
+            - generic [ref=e159]: 종료일
+            - textbox [ref=e160]: 2024-05-03
+        - generic [ref=e161]:
+          - generic [ref=e162]: 파일명
+          - generic [ref=e163]: 2024_04_01_2024_05_03.csv
+          - generic [ref=e164]: "대상: 약 148건 · content_hash 포함"
+        - generic [ref=e165]:
+          - button "취소" [ref=e166] [cursor=pointer]
+          - button "내보내기" [ref=e167] [cursor=pointer]

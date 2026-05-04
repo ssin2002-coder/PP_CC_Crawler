@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<title>Word 크롤러 UI 목업</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Noto+Sans+KR:wght@300;400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --max-w: 1080px;
+    --bg-deep: #0c111b;
+    --bg-panel: #131a2a;
+    --bg-surface: #1a2236;
+    --bg-elevated: #212d45;
+    --border: #2a3650;
+    --border-light: #354563;
+    --accent: #3b82f6;
+    --accent-glow: #3b82f640;
+    --accent-hover: #2563eb;
+    --green: #22c55e;
+    --green-bg: #22c55e15;
+    --green-border: #22c55e40;
+    --amber: #f59e0b;
+    --amber-bg: #f59e0b12;
+    --red: #ef4444;
+    --red-bg: #ef444412;
+    --text-primary: #e2e8f0;
+    --text-secondary: #94a3b8;
+    --text-muted: #64748b;
+    --text-accent: #93c5fd;
+    --radius: 8px;
+    --radius-lg: 12px;
+    --shadow: 0 4px 24px rgba(0,0,0,0.35);
+    --shadow-lg: 0 12px 48px rgba(0,0,0,0.5);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: 'IBM Plex Sans KR', 'Noto Sans KR', sans-serif;
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    padding: 32px 24px 48px;
+    min-height: 100vh;
+    background-image:
+      radial-gradient(ellipse 80% 60% at 50% 0%, #1e3a5f18 0%, transparent 70%),
+      radial-gradient(circle at 80% 80%, #3b82f608 0%, transparent 40%);
+  }
+
+  /* ─── Header ─── */
+  .page-header {
+    max-width: var(--max-w);
+    margin: 0 auto 20px;
+    text-align: center;
+  }
+  .page-header h1 {
+    font-size: 20px;
+    font-weight: 600;
+    color: var(--text-primary);
+    letter-spacing: -0.3px;
+    margin-bottom: 4px;
+  }
+  .page-header h1 span { color: var(--accent); }
+  .page-header p {
+    font-size: 12px;
+    color: var(--text-muted);
+    font-weight: 300;
+  }
+
+  /* ─── Condition Banner ─── */
+  .condition-banner {
+    max-width: var(--max-w);
+    margin: 0 auto 16px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 10px 16px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .condition-banner .icon {
+    width: 18px; height: 18px;
+    background: var(--accent);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px; color: white; flex-shrink: 0;
+    font-weight: 700;
+  }
+  .condition-banner strong { color: var(--text-accent); font-weight: 500; }
+
+  /* ─── Main Popup ─── */
+  .popup {
+    max-width: var(--max-w);
+    margin: 0 auto 24px;
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow-lg);
+  }
+
+  .popup-titlebar {
+    background: var(--bg-surface);
+    padding: 10px 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--border);
+  }
+  .popup-titlebar .title-left {
+    display: flex; align-items: center; gap: 10px;
+  }
+  .popup-titlebar .app-icon {
+    width: 22px; height: 22px;
+    background: linear-gradient(135deg, var(--accent), #6366f1);
+    border-radius: 5px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; font-weight: 700; color: white;
+  }
+  .popup-titlebar .title-text {
+    font-size: 13px; font-weight: 600; color: var(--text-primary);
+  }
+  .window-btns { display: flex; gap: 7px; }
+  .window-btns span {
+    width: 11px; height: 11px; border-radius: 50%; display: inline-block;
+    opacity: 0.8;
+  }
+  .wb-close { background: #ef4444; }
+  .wb-min { background: #f59e0b; }
+  .wb-max { background: #22c55e; }
+
+  /* Status bar */
+  .popup-status {
+    padding: 8px 16px;
+    background: var(--bg-deep);
+    border-bottom: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-muted);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .popup-status .stat { color: var(--text-secondary); }
+  .popup-status .stat strong { color: var(--text-accent); font-weight: 600; }
+  .popup-status .badge {
+    background: var(--green-bg);
+    border: 1px solid var(--green-border);
+    color: var(--green);
+    padding: 2px 10px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  /* Body */
+  .popup-body { display: flex; height: 330px; }
+
+  /* Date sidebar */
+  .date-panel {
+    width: 152px;
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    background: var(--bg-deep);
+  }
+  .date-panel-header {
+    padding: 10px 12px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    border-bottom: 1px solid var(--border);
+  }
+  .date-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 6px;
+  }
+  .date-list::-webkit-scrollbar { width: 4px; }
+  .date-list::-webkit-scrollbar-track { background: transparent; }
+  .date-list::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
+
+  .date-item {
+    padding: 7px 10px;
+    font-size: 11px;
+    border-radius: 6px;
+    cursor: pointer;
+    margin-bottom: 2px;
+    color: var(--text-secondary);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    transition: all 0.15s ease;
+  }
+  .date-item:hover { background: var(--bg-elevated); color: var(--text-primary); }
+  .date-item.active {
+    background: var(--accent);
+    color: white;
+    font-weight: 500;
+  }
+  .date-item.new { color: var(--green); }
+  .date-item.new .dot {
+    width: 6px; height: 6px;
+    background: var(--green);
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .date-item.active.new { color: white; }
+  .date-item.active .dot { background: white; }
+  .date-item .cnt {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px;
+    opacity: 0.7;
+  }
+
+  .date-panel-footer {
+    padding: 8px;
+    border-top: 1px solid var(--border);
+  }
+  .btn-all {
+    width: 100%;
+    padding: 6px;
+    background: var(--bg-elevated);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-secondary);
+    font-size: 11px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s ease;
+  }
+  .btn-all:hover { background: var(--border); color: var(--text-primary); }
+
+  /* Table */
+  .table-panel {
+    flex: 1;
+    overflow: auto;
+  }
+  .table-panel::-webkit-scrollbar { width: 6px; height: 6px; }
+  .table-panel::-webkit-scrollbar-track { background: transparent; }
+  .table-panel::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: 4px; }
+
+  table { width: 100%; border-collapse: collapse; }
+  thead th {
+    background: var(--bg-surface);
+    padding: 9px 12px;
+    text-align: left;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    white-space: nowrap;
+    z-index: 1;
+  }
+  tbody td {
+    padding: 8px 12px;
+    border-bottom: 1px solid #1a2236;
+    font-size: 12px;
+    color: var(--text-secondary);
+    max-width: 240px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  tbody td.mono {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  tbody tr { transition: background 0.1s ease; }
+  tbody tr:hover { background: #1a2540; }
+  tbody tr.row-new { background: #0f1f15; }
+  tbody tr.row-new td { color: var(--text-primary); }
+  tbody tr.row-new:hover { background: #152a1c; }
+  tbody tr.row-selected {
+    background: #1a2a4a;
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
+  }
+
+  /* Footer */
+  .popup-footer {
+    padding: 10px 16px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    background: var(--bg-surface);
+  }
+
+  .btn {
+    padding: 7px 20px;
+    border: 1px solid transparent;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .btn-primary {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+    box-shadow: 0 0 16px var(--accent-glow);
+  }
+  .btn-primary:hover { background: var(--accent-hover); }
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    border-color: var(--border);
+  }
+  .btn-ghost:hover { background: var(--bg-elevated); color: var(--text-primary); border-color: var(--border-light); }
+  .btn-danger {
+    background: transparent;
+    color: var(--red);
+    border-color: #ef444440;
+  }
+  .btn-danger:hover { background: var(--red-bg); border-color: var(--red); }
+  .btn-export {
+    background: var(--green);
+    color: #0a1a0f;
+    border-color: var(--green);
+    font-weight: 600;
+  }
+  .btn-export:hover { background: #16a34a; }
+
+  .footer-group { display: flex; gap: 8px; align-items: center; }
+
+  /* ─── Bottom Grid ─── */
+  .bottom-grid {
+    max-width: var(--max-w);
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  .bottom-card {
+    background: var(--bg-panel);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    box-shadow: var(--shadow);
+  }
+  .bottom-card-header {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    background: var(--bg-surface);
+  }
+  .bottom-card-body { padding: 16px; }
+
+  /* Tray */
+  .tray-mockup {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 8px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 12px;
+    margin-bottom: 14px;
+  }
+  .tray-dots { display: flex; gap: 5px; }
+  .tray-dots span {
+    width: 16px; height: 16px;
+    background: var(--bg-elevated);
+    border-radius: 3px;
+  }
+  .tray-app-icon {
+    width: 22px; height: 22px;
+    background: linear-gradient(135deg, var(--accent), #6366f1);
+    border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 10px; font-weight: 700; color: white;
+    cursor: pointer;
+    position: relative;
+  }
+  .tray-app-icon:hover .tray-menu { display: block; }
+
+  .tray-menu {
+    display: none;
+    position: absolute;
+    bottom: 30px; right: 0;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius);
+    min-width: 170px;
+    padding: 4px;
+    z-index: 100;
+    box-shadow: var(--shadow-lg);
+  }
+  .tray-menu-item {
+    padding: 7px 12px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: 5px;
+    transition: all 0.1s;
+  }
+  .tray-menu-item:hover { background: var(--bg-elevated); color: var(--text-primary); }
+  .tray-menu-sep { border-top: 1px solid var(--border); margin: 4px 8px; }
+  .tray-menu-item.checked {
+    color: var(--accent);
+  }
+  .tray-menu-item.checked::before {
+    content: '✓ ';
+    font-weight: 700;
+  }
+
+  .toast-grid { display: flex; flex-direction: column; gap: 6px; }
+  .toast {
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .toast-indicator {
+    width: 3px;
+    height: 28px;
+    border-radius: 2px;
+    flex-shrink: 0;
+  }
+  .toast-ok .toast-indicator { background: var(--green); }
+  .toast-dup .toast-indicator { background: var(--amber); }
+  .toast-fail .toast-indicator { background: var(--red); }
+  .toast-content { flex: 1; }
+  .toast-label {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 2px;
+  }
+  .toast-ok .toast-label { color: var(--green); }
+  .toast-dup .toast-label { color: var(--amber); }
+  .toast-fail .toast-label { color: var(--red); }
+  .toast-msg {
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+
+  /* CSV Export */
+  .export-field { margin-bottom: 12px; }
+  .export-field label {
+    display: block;
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 5px;
+  }
+  .export-field select,
+  .export-field input[type="date"] {
+    width: 100%;
+    padding: 8px 12px;
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-family: inherit;
+    transition: border-color 0.15s;
+  }
+  .export-field select:focus,
+  .export-field input[type="date"]:focus {
+    outline: none;
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+  }
+  .export-dates {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+
+  .export-preview {
+    background: var(--bg-deep);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    margin: 14px 0;
+  }
+  .export-preview .preview-label {
+    font-size: 10px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+  .export-preview .filename {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    color: var(--green);
+    font-weight: 500;
+  }
+  .export-preview .count {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+  .export-btns {
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+  }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div class="page-header">
+  <h1>설비일보 <span>Word</span> 크롤러 — UI 목업</h1>
+  <p>tkinter + pystray 기반 · 트레이 상주 → 뷰어 열기 시 표시</p>
+</div>
+
+<!-- Condition Banner -->
+<div class="condition-banner">
+  <div class="icon">i</div>
+  <span>
+    <strong>팝업 표시 조건</strong> —
+    ① 트레이 우클릭 → "파싱 뷰어 열기" 클릭 &nbsp;|&nbsp;
+    ② 확인 후 저장 모드에서 새 파일 파싱 시 자동 오픈
+  </span>
+</div>
+
+<!-- ═══ Main Popup ═══ -->
+<div class="popup">
+  <div class="popup-titlebar">
+    <div class="title-left">
+      <div class="app-icon">W</div>
+      <span class="title-text">설비일보 파서</span>
+    </div>
+    <div class="window-btns">
+      <span class="wb-min"></span>
+      <span class="wb-max"></span>
+      <span class="wb-close"></span>
+    </div>
+  </div>
+
+  <div class="popup-status">
+    <div class="stat">
+      전체 이력 <strong>148</strong>건 &nbsp;·&nbsp; 신규 파싱 <strong>12</strong>건 (1파일)
+    </div>
+    <div class="badge">● 감지 중</div>
+  </div>
+
+  <div class="popup-body">
+    <!-- Date Panel -->
+    <div class="date-panel">
+      <div class="date-panel-header">날짜 목록</div>
+      <div class="date-list">
+        <div class="date-item new active">
+          <span><span class="dot"></span> 2024-05-03</span>
+          <span class="cnt">12</span>
+        </div>
+        <div class="date-item">
+          <span>2024-04-28</span>
+          <span class="cnt">9</span>
+        </div>
+        <div class="date-item">
+          <span>2024-04-25</span>
+          <span class="cnt">15</span>
+        </div>
+        <div class="date-item">
+          <span>2024-04-22</span>
+          <span class="cnt">11</span>
+        </div>
+        <div class="date-item">
+          <span>2024-04-20</span>
+          <span class="cnt">8</span>
+        </div>
+        <div class="date-item">
+          <span>2024-04-18</span>
+          <span class="cnt">14</span>
+        </div>
+        <div class="date-item">
+          <span>2024-04-15</span>
+          <span class="cnt">10</span>
+        </div>
+        <div class="date-item">
+          <span>2024-04-12</span>
+          <span class="cnt">7</span>
+        </div>
+        <div class="date-item">
+          <span>2024-04-10</span>
+          <span class="cnt">13</span>
+        </div>
+      </div>
+      <div class="date-panel-footer">
+        <button class="btn-all">전체 보기</button>
+      </div>
+    </div>
+
+    <!-- Table -->
+    <div class="table-panel">
+      <table>
+        <thead>
+          <tr>
+            <th>날짜</th>
+            <th>구분</th>
+            <th>영역</th>
+            <th>항목 (item_text)</th>
+            <th>원문 (raw_cell)</th>
+            <th>비고</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="row-new">
+            <td class="mono">2024-05-03</td>
+            <td>Day</td>
+            <td>A동</td>
+            <td>AHU-3 이상진동 발생 베어링 마모 추정</td>
+            <td>AHU-3 이상진동 발생 베어링 마모 추정 ∥ 보일러 #2 압력 불안정...</td>
+            <td>베어링 발주</td>
+          </tr>
+          <tr class="row-new">
+            <td class="mono">2024-05-03</td>
+            <td>Day</td>
+            <td>A동</td>
+            <td>보일러 #2 압력 불안정 밸브 점검 필요</td>
+            <td>AHU-3 이상진동 발생 베어링 마모 추정 ∥ 보일러 #2 압력 불안정...</td>
+            <td>베어링 발주</td>
+          </tr>
+          <tr class="row-new">
+            <td class="mono">2024-05-03</td>
+            <td>Day</td>
+            <td>B동</td>
+            <td>FCU 드레인 오버플로우 배관 청소 완료</td>
+            <td>FCU 드레인 오버플로우 배관 청소 완료</td>
+            <td>베어링 발주</td>
+          </tr>
+          <tr class="row-new row-selected">
+            <td class="mono">2024-05-03</td>
+            <td>Night</td>
+            <td>A동</td>
+            <td>냉각탑 팬 이상음 확인중</td>
+            <td>냉각탑 팬 이상음 확인중 ∥ 집수정 수위 상승 배수펌프 가동</td>
+            <td></td>
+          </tr>
+          <tr class="row-new">
+            <td class="mono">2024-05-03</td>
+            <td>Night</td>
+            <td>A동</td>
+            <td>집수정 수위 상승 배수펌프 가동</td>
+            <td>냉각탑 팬 이상음 확인중 ∥ 집수정 수위 상승 배수펌프 가동</td>
+            <td></td>
+          </tr>
+          <tr class="row-new">
+            <td class="mono">2024-05-03</td>
+            <td>Night</td>
+            <td>B동</td>
+            <td>특이사항 없음</td>
+            <td>특이사항 없음</td>
+            <td></td>
+          </tr>
+          <tr class="row-new">
+            <td class="mono">2024-05-03</td>
+            <td>Off</td>
+            <td>A동</td>
+            <td>EHP 실외기 점검 완료</td>
+            <td>EHP 실외기 점검 완료</td>
+            <td>정기점검</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="popup-footer">
+    <div class="footer-group">
+      <button class="btn btn-danger">선택 행 삭제</button>
+    </div>
+    <div class="footer-group">
+      <button class="btn btn-ghost">스킵</button>
+      <button class="btn btn-primary">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ Bottom Grid: Tray + CSV ═══ -->
+<div class="bottom-grid">
+
+  <!-- Tray -->
+  <div class="bottom-card">
+    <div class="bottom-card-header">시스템 트레이 (항상 상주)</div>
+    <div class="bottom-card-body">
+      <div class="tray-mockup">
+        <div class="tray-dots"><span></span><span></span><span></span></div>
+        <div class="tray-app-icon">
+          W
+          <div class="tray-menu">
+            <div class="tray-menu-item">파싱 뷰어 열기</div>
+            <div class="tray-menu-sep"></div>
+            <div class="tray-menu-item checked">확인 후 저장</div>
+            <div class="tray-menu-item">즉시 저장</div>
+            <div class="tray-menu-sep"></div>
+            <div class="tray-menu-item">종료</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="toast-grid">
+        <div class="toast toast-ok">
+          <div class="toast-indicator"></div>
+          <div class="toast-content">
+            <div class="toast-label">파싱 성공</div>
+            <div class="toast-msg">설비일보 2024-05-03 파싱 완료 (12건)</div>
+          </div>
+        </div>
+        <div class="toast toast-dup">
+          <div class="toast-indicator"></div>
+          <div class="toast-content">
+            <div class="toast-label">중복 감지</div>
+            <div class="toast-msg">이미 파싱된 파일입니다 (2024-05-03)</div>
+          </div>
+        </div>
+        <div class="toast toast-fail">
+          <div class="toast-indicator"></div>
+          <div class="toast-content">
+            <div class="toast-label">파싱 실패</div>
+            <div class="toast-msg">파싱 대상 아님: 회의록_0503.docx</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CSV Export -->
+  <div class="bottom-card">
+    <div class="bottom-card-header">CSV 내보내기</div>
+    <div class="bottom-card-body">
+      <div class="export-field">
+        <label>범위 선택</label>
+        <select>
+          <option>날짜 범위 지정</option>
+          <option>전체 내보내기</option>
+        </select>
+      </div>
+
+      <div class="export-dates">
+        <div class="export-field">
+          <label>시작일</label>
+          <input type="date" value="2024-04-01">
+        </div>
+        <div class="export-field">
+          <label>종료일</label>
+          <input type="date" value="2024-05-03">
+        </div>
+      </div>
+
+      <div class="export-preview">
+        <div class="preview-label">파일명</div>
+        <div class="filename">2024_04_01_2024_05_03.csv</div>
+        <div class="count">대상: 약 148건 · content_hash 포함</div>
+      </div>
+
+      <div class="export-btns">
+        <button class="btn btn-ghost">취소</button>
+        <button class="btn btn-export">내보내기</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>

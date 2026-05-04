@@ -585,8 +585,8 @@ class ParseResultPopup:
         self._header_tree = ttk.Treeview(tree_frame, columns=cols, show='headings',
                                           height=1, selectmode='none')
         for col_id, db_name, label, w in self._col_defs:
-            self._header_tree.heading(col_id, text=db_name)
-            self._header_tree.column(col_id, width=w, minwidth=40, stretch=True)
+            self._header_tree.heading(col_id, text=db_name, anchor='center')
+            self._header_tree.column(col_id, width=w, minwidth=40, stretch=True, anchor='center')
         self._header_tree.tag_configure('label_row',
                                          background=C['bg_surface'], foreground=C['text_accent'])
         display_labels = tuple(d[2] for d in self._col_defs)

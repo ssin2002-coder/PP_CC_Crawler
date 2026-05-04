@@ -630,25 +630,21 @@ class ParseResultPopup:
         range_combo.grid(row=0, column=1, padx=(8, 16), pady=2, sticky='w')
         range_combo.bind('<<ComboboxSelected>>', self._csv_on_range_change)
 
-        # 시작일
+        # 시작일 (Combobox — DB 날짜 자동 파악)
         tk.Label(csv_body, text='시작일', bg=C['bg_panel'], fg=C['text3'],
                  font=('맑은 고딕', 9)).grid(row=0, column=2, sticky='w', pady=2)
         self._csv_start_var = tk.StringVar()
-        self._csv_start_entry = tk.Entry(csv_body, textvariable=self._csv_start_var,
-                 font=('맑은 고딕', 10), width=12,
-                 bg=C['bg_deep'], fg=C['text1'], insertbackground=C['text1'],
-                 highlightbackground=C['border'], highlightthickness=1, relief='flat')
-        self._csv_start_entry.grid(row=0, column=3, padx=(4, 16), pady=2)
+        self._csv_start_combo = ttk.Combobox(csv_body, textvariable=self._csv_start_var,
+                 font=('맑은 고딕', 10), width=12, state='readonly')
+        self._csv_start_combo.grid(row=0, column=3, padx=(4, 16), pady=2)
 
-        # 종료일
+        # 종료일 (Combobox — DB 날짜 자동 파악)
         tk.Label(csv_body, text='종료일', bg=C['bg_panel'], fg=C['text3'],
                  font=('맑은 고딕', 9)).grid(row=0, column=4, sticky='w', pady=2)
         self._csv_end_var = tk.StringVar()
-        self._csv_end_entry = tk.Entry(csv_body, textvariable=self._csv_end_var,
-                 font=('맑은 고딕', 10), width=12,
-                 bg=C['bg_deep'], fg=C['text1'], insertbackground=C['text1'],
-                 highlightbackground=C['border'], highlightthickness=1, relief='flat')
-        self._csv_end_entry.grid(row=0, column=5, padx=(4, 16), pady=2)
+        self._csv_end_combo = ttk.Combobox(csv_body, textvariable=self._csv_end_var,
+                 font=('맑은 고딕', 10), width=12, state='readonly')
+        self._csv_end_combo.grid(row=0, column=5, padx=(4, 16), pady=2)
 
         # 파일명 미리보기
         self._csv_preview_var = tk.StringVar(value='...')
@@ -735,6 +731,9 @@ class ParseResultPopup:
         total_db = len(self._db_records)
         total_new = sum(len(r) for _, _, r, _ in pending_copy)
         self._info_var.set(f'전체 이력: {total_db}건  ·  신규 파싱: {total_new}건 ({len(pending_copy)}파일)')
+
+        # CSV 날짜 콤보박스 갱신
+        self._csv_refresh_dates()
 
     # ── 날짜 선택 ──
     def _on_date_select(self, event):
@@ -841,9 +840,27 @@ class ParseResultPopup:
 
     def _csv_on_range_change(self, event=None):
         is_all = self._csv_range_var.get() == '전체 내보내기'
-        state = 'disabled' if is_all else 'normal'
-        self._csv_start_entry.config(state=state)
-        self._csv_end_entry.config(state=state)
+        state = 'disabled' if is_all else 'readonly'
+        self._csv_start_combo.config(state=state)
+        self._csv_end_combo.config(state=state)
+        self._csv_update_preview()
+
+    def _csv_refresh_dates(self):
+        """DB에서 고유 날짜 목록을 가져와 시작일/종료일 Combobox에 설정."""
+        dates = sorted(set(r.get('date', '') for r in self._db_records if r.get('date')))
+        # pending 날짜도 포함
+        with self._lock:
+            for _, ds, _, _ in self._pending:
+                if ds and ds not in dates:
+                    dates.append(ds)
+        dates = sorted(dates)
+        self._csv_start_combo['values'] = dates
+        self._csv_end_combo['values'] = dates
+        if dates:
+            if not self._csv_start_var.get():
+                self._csv_start_var.set(dates[0])
+            if not self._csv_end_var.get():
+                self._csv_end_var.set(dates[-1])
         self._csv_update_preview()
 
     def _csv_update_preview(self, *_):

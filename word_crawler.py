@@ -202,9 +202,15 @@ def split_items(cell_text):
     return [item.strip() for item in items if item.strip()]
 
 
+def _strip_numbering(text):
+    """각 줄 앞의 번호 패턴(1), 2), 3) 등) 제거."""
+    return re.sub(r'^\d+\)\s*', '', text.strip(), flags=re.MULTILINE)
+
+
 def parse_item_block(text):
     """한 블록(2+ 개행으로 분리된 단위)에서 [현상][원인][조치] 태그 추출.
-    태그가 없으면 raw_text에 전체 텍스트를 넣음."""
+    태그가 없으면 raw_text에 전체 텍스트를 넣음. 번호 패턴은 제거."""
+    text = _strip_numbering(text)
     parsed = {'phenomenon': '', 'cause': '', 'action': '', 'raw_text': ''}
     for match in TAG_PATTERN.finditer(text):
         tag, content = match.group(1), match.group(2).strip()
@@ -215,11 +221,9 @@ def parse_item_block(text):
         elif tag == '조치':
             parsed['action'] = content
 
-    # 태그가 하나도 없으면 전체를 raw_text에
     if not parsed['phenomenon'] and not parsed['cause'] and not parsed['action']:
         parsed['raw_text'] = text.strip()
     else:
-        # 태그 제거 후 남은 텍스트를 raw_text에
         leftover = re.sub(r'\[(현상|원인|조치)\]\s*[^\r\n\[\]]+', '', text).strip()
         leftover = '\n'.join(line.strip() for line in leftover.split('\n') if line.strip())
         parsed['raw_text'] = leftover

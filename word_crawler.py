@@ -1,9 +1,9 @@
 """
 설비일보 Word 크롤러 (단일 파일)
 - 열린 Word 문서에서 설비일보 표를 자동 감지/파싱 (동적 헤더)
-- SQLite에 적재 (항목 단위 분리 + raw_cell 보존)
-- 시스템 트레이 + tkinter 팝업 UI
-- CSV 내보내기 → SQream 이관
+- [현상][원인][조치] 태그 추출 + 2+ 개행으로 항목 분리
+- SQLite 적재 + CSV 내보내기 → SQream 이관
+- 시스템 트레이 + tkinter 다크 테마 팝업 UI
 """
 import os
 import sys
@@ -25,6 +25,8 @@ from tkinter import ttk, simpledialog, filedialog, messagebox
 # Constants
 # ─────────────────────────────────────────────
 
+TAG_PATTERN = re.compile(r'\[(현상|원인|조치)\]\s*([^\r\n\[\]]+)')
+
 DATE_PATTERNS_TEXT = [
     re.compile(r'(\d{4})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})'),
     re.compile(r'(\d{2})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})'),
@@ -37,6 +39,24 @@ DATE_PATTERNS_FILENAME = [
 
 DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'facility_daily.db')
 LOCK_PATH = os.path.join(os.path.dirname(DB_PATH), 'word_crawler.lock')
+
+# 다크 테마 색상
+C = {
+    'bg_deep': '#0c111b',
+    'bg_panel': '#131a2a',
+    'bg_surface': '#1a2236',
+    'bg_elevated': '#212d45',
+    'border': '#2a3650',
+    'accent': '#3b82f6',
+    'green': '#22c55e',
+    'green_row': '#0f1f15',
+    'amber': '#f59e0b',
+    'red': '#ef4444',
+    'text1': '#e2e8f0',
+    'text2': '#94a3b8',
+    'text3': '#64748b',
+    'text_accent': '#93c5fd',
+}
 
 # ─────────────────────────────────────────────
 # DB
@@ -55,7 +75,10 @@ def init_db(db_path=None):
             header1          TEXT,
             val1             TEXT,
             content_col_name TEXT,
-            item_text        TEXT,
+            phenomenon       TEXT,
+            cause            TEXT,
+            action           TEXT,
+            raw_text         TEXT,
             raw_cell         TEXT,
             header4          TEXT,
             val4             TEXT,
@@ -76,12 +99,13 @@ def insert_records(db_path, records, content_hash=None):
         conn.execute('''
             INSERT INTO facility_daily
             (date, source_file, row_num, header1, val1, content_col_name,
-             item_text, raw_cell, header4, val4, content_hash)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             phenomenon, cause, action, raw_text, raw_cell, header4, val4, content_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             rec['date'], rec['source_file'], rec['row_num'],
             rec['header1'], rec['val1'], rec['content_col_name'],
-            rec['item_text'], rec['raw_cell'],
+            rec.get('phenomenon', ''), rec.get('cause', ''), rec.get('action', ''),
+            rec.get('raw_text', ''), rec['raw_cell'],
             rec['header4'], rec['val4'], content_hash,
         ))
     conn.commit()
@@ -102,10 +126,8 @@ def check_duplicate(db_path, source_file, date, new_hash):
 
 def delete_by_source(db_path, source_file, date):
     conn = sqlite3.connect(db_path)
-    conn.execute(
-        'DELETE FROM facility_daily WHERE source_file = ? AND date = ?',
-        (source_file, date)
-    )
+    conn.execute('DELETE FROM facility_daily WHERE source_file = ? AND date = ?',
+                 (source_file, date))
     conn.commit()
     conn.close()
 
@@ -124,8 +146,7 @@ def get_recent_history(db_path, limit=500):
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     rows = conn.execute(
-        'SELECT * FROM facility_daily ORDER BY date DESC, id DESC LIMIT ?',
-        (limit,)
+        'SELECT * FROM facility_daily ORDER BY date DESC, id DESC LIMIT ?', (limit,)
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -133,7 +154,7 @@ def get_recent_history(db_path, limit=500):
 
 def compute_hash(records):
     raw = '|'.join(
-        f"{r.get('val1','')}:{r.get('content_col_name','')}:{r.get('item_text','')}"
+        f"{r.get('val1','')}:{r.get('content_col_name','')}:{r.get('raw_text','')}"
         for r in records
     )
     return hashlib.sha256(raw.encode('utf-8')).hexdigest()[:16]
@@ -143,16 +164,13 @@ def export_csv(db_path, output_path, start_date=None, end_date=None):
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     query = 'SELECT * FROM facility_daily'
-    params = []
-    conditions = []
+    params, conds = [], []
     if start_date:
-        conditions.append('date >= ?')
-        params.append(start_date)
+        conds.append('date >= ?'); params.append(start_date)
     if end_date:
-        conditions.append('date <= ?')
-        params.append(end_date)
-    if conditions:
-        query += ' WHERE ' + ' AND '.join(conditions)
+        conds.append('date <= ?'); params.append(end_date)
+    if conds:
+        query += ' WHERE ' + ' AND '.join(conds)
     query += ' ORDER BY date, id'
     rows = conn.execute(query, params).fetchall()
     conn.close()
@@ -184,15 +202,40 @@ def split_items(cell_text):
     return [item.strip() for item in items if item.strip()]
 
 
+def parse_item_block(text):
+    """한 블록(2+ 개행으로 분리된 단위)에서 [현상][원인][조치] 태그 추출.
+    태그가 없으면 raw_text에 전체 텍스트를 넣음."""
+    parsed = {'phenomenon': '', 'cause': '', 'action': '', 'raw_text': ''}
+    for match in TAG_PATTERN.finditer(text):
+        tag, content = match.group(1), match.group(2).strip()
+        if tag == '현상':
+            parsed['phenomenon'] = content
+        elif tag == '원인':
+            parsed['cause'] = content
+        elif tag == '조치':
+            parsed['action'] = content
+
+    # 태그가 하나도 없으면 전체를 raw_text에
+    if not parsed['phenomenon'] and not parsed['cause'] and not parsed['action']:
+        parsed['raw_text'] = text.strip()
+    else:
+        # 태그 제거 후 남은 텍스트를 raw_text에
+        leftover = re.sub(r'\[(현상|원인|조치)\]\s*[^\r\n\[\]]+', '', text).strip()
+        leftover = '\n'.join(line.strip() for line in leftover.split('\n') if line.strip())
+        parsed['raw_text'] = leftover
+
+    return parsed
+
+
 def extract_date_from_text(text):
     for pattern in DATE_PATTERNS_TEXT:
         match = pattern.search(text)
         if match:
             groups = match.groups()
-            year, month, day = int(groups[0]), int(groups[1]), int(groups[2])
-            if year < 100:
-                year += 2000
-            return f'{year:04d}-{month:02d}-{day:02d}'
+            y, m, d = int(groups[0]), int(groups[1]), int(groups[2])
+            if y < 100:
+                y += 2000
+            return f'{y:04d}-{m:02d}-{d:02d}'
     return None
 
 
@@ -202,10 +245,10 @@ def extract_date_from_filename(filename):
         if match:
             groups = match.groups()
             if len(groups) == 3:
-                year, month, day = int(groups[0]), int(groups[1]), int(groups[2])
-                if year < 100:
-                    year += 2000
-                return f'{year:04d}-{month:02d}-{day:02d}'
+                y, m, d = int(groups[0]), int(groups[1]), int(groups[2])
+                if y < 100:
+                    y += 2000
+                return f'{y:04d}-{m:02d}-{d:02d}'
     return None
 
 
@@ -237,7 +280,8 @@ def parse_table_data(headers, rows_data, date_str, source_file):
             items = split_items(raw_cell)
             if not items:
                 items = [raw_cell] if raw_cell.strip() else []
-            for item_text in items:
+            for block_text in items:
+                parsed = parse_item_block(block_text)
                 records.append({
                     'date': date_str,
                     'source_file': source_file,
@@ -245,7 +289,10 @@ def parse_table_data(headers, rows_data, date_str, source_file):
                     'header1': h1_name,
                     'val1': val1,
                     'content_col_name': col_name,
-                    'item_text': item_text,
+                    'phenomenon': parsed['phenomenon'],
+                    'cause': parsed['cause'],
+                    'action': parsed['action'],
+                    'raw_text': parsed['raw_text'],
                     'raw_cell': raw_cell,
                     'header4': h4_name,
                     'val4': val4,
@@ -294,57 +341,43 @@ class WordWatcher:
             word = win32com.client.GetActiveObject('Word.Application')
         except Exception:
             return
-
         for i in range(1, word.Documents.Count + 1):
             doc = word.Documents(i)
             doc_full = doc.FullName
             if doc_full in self._seen_docs:
                 continue
-
             result = self._parse_document(doc)
             self._seen_docs.add(doc_full)
-
             if result is None:
                 self.on_no_table(doc.Name)
                 continue
-
             records, date_str = result
             content_hash = compute_hash(records)
-            dup_status = check_duplicate(self.db_path, doc.Name, date_str, content_hash)
-
-            if dup_status == 'new':
+            dup = check_duplicate(self.db_path, doc.Name, date_str, content_hash)
+            if dup == 'new':
                 self.on_new_parse(doc.Name, date_str, records, content_hash)
-            elif dup_status == 'same':
+            elif dup == 'same':
                 self.on_duplicate_same(doc.Name, date_str)
             else:
                 self.on_duplicate_changed(doc.Name, date_str, records, content_hash)
 
     def _parse_document(self, doc):
-        table_count = doc.Tables.Count
-        if table_count == 0:
+        if doc.Tables.Count == 0:
             return None
-
         row_counts = []
-        for t in range(1, table_count + 1):
+        for t in range(1, doc.Tables.Count + 1):
             try:
                 row_counts.append(doc.Tables(t).Rows.Count)
             except Exception:
                 row_counts.append(0)
-
         table_idx = find_main_table_index(row_counts)
         if table_idx is None:
             return None
-
         table = doc.Tables(table_idx + 1)
-
-        # 헤더 동적 읽기
         headers = []
         row1 = table.Rows(1)
         for c in range(1, row1.Cells.Count + 1):
-            h_raw = row1.Cells(c).Range.Text
-            headers.append(clean_cell_text(h_raw))
-
-        # 날짜 추출
+            headers.append(clean_cell_text(row1.Cells(c).Range.Text))
         date_str = None
         table_range = table.Range
         doc_text_before = doc.Range(0, table_range.Start).Text
@@ -355,17 +388,13 @@ class WordWatcher:
             date_str = self.on_date_missing(doc.Name)
             if date_str is None:
                 return None
-
-        # 데이터 행 읽기
         rows_data = []
         for r in range(2, table.Rows.Count + 1):
             row = table.Rows(r)
             cells = []
             for c in range(1, row.Cells.Count + 1):
-                raw = row.Cells(c).Range.Text
-                cells.append(clean_cell_text(raw))
+                cells.append(clean_cell_text(row.Cells(c).Range.Text))
             rows_data.append(cells)
-
         records = parse_table_data(headers, rows_data, date_str, doc.Name)
         return (records, date_str) if records else None
 
@@ -377,19 +406,65 @@ class WordWatcher:
 # ─────────────────────────────────────────────
 
 def _flat(text):
-    """줄바꿈을 공백으로 치환하여 Treeview 한 줄 표시."""
-    if text is None:
+    if not text:
         return ''
-    return str(text).replace('\n', ' ').replace('\r', ' ')
+    return ' '.join(str(text).replace('\r', ' ').replace('\n', ' ').split())
+
+
+def _apply_dark_theme(root):
+    root.configure(bg=C['bg_deep'])
+    style = ttk.Style(root)
+    style.theme_use('clam')
+    style.configure('Treeview',
+                    background=C['bg_panel'], foreground=C['text1'],
+                    fieldbackground=C['bg_panel'], borderwidth=0,
+                    font=('맑은 고딕', 9), rowheight=24)
+    style.configure('Treeview.Heading',
+                    background=C['bg_surface'], foreground=C['text_accent'],
+                    font=('맑은 고딕', 9, 'bold'), borderwidth=0)
+    style.map('Treeview',
+              background=[('selected', C['accent'])],
+              foreground=[('selected', 'white')])
+    style.map('Treeview.Heading',
+              background=[('active', C['bg_elevated'])])
+    style.configure('Vertical.TScrollbar',
+                    background=C['bg_surface'], troughcolor=C['bg_deep'],
+                    borderwidth=0, arrowsize=12)
+    style.configure('Horizontal.TScrollbar',
+                    background=C['bg_surface'], troughcolor=C['bg_deep'],
+                    borderwidth=0, arrowsize=12)
+
+
+def _dark_frame(parent, **kw):
+    return tk.Frame(parent, bg=C['bg_deep'], **kw)
+
+
+def _dark_label(parent, text='', **kw):
+    return tk.Label(parent, text=text, bg=C['bg_deep'], fg=C['text1'],
+                    font=('맑은 고딕', 10), **kw)
+
+
+def _dark_button(parent, text='', command=None, style='default', **kw):
+    colors = {
+        'default': {'bg': C['bg_elevated'], 'fg': C['text2'], 'abg': C['border']},
+        'primary': {'bg': C['accent'], 'fg': 'white', 'abg': '#2563eb'},
+        'danger': {'bg': '#7f1d1d', 'fg': '#fca5a5', 'abg': C['red']},
+        'export': {'bg': '#14532d', 'fg': '#86efac', 'abg': C['green']},
+    }
+    c = colors.get(style, colors['default'])
+    return tk.Button(parent, text=text, command=command,
+                     bg=c['bg'], fg=c['fg'], activebackground=c['abg'],
+                     activeforeground='white', relief='flat', bd=0,
+                     font=('맑은 고딕', 10), padx=16, pady=5, cursor='hand2', **kw)
 
 
 class ParseResultPopup:
     _instance = None
-    _lock = threading.Lock()
+    _cls_lock = threading.Lock()
 
     @classmethod
     def get_or_create(cls, on_save_all=None, db_path=None):
-        with cls._lock:
+        with cls._cls_lock:
             if cls._instance is None or not cls._instance._alive:
                 cls._instance = cls(on_save_all=on_save_all, db_path=db_path)
             return cls._instance
@@ -398,9 +473,14 @@ class ParseResultPopup:
         self.on_save_all = on_save_all or (lambda p: None)
         self.db_path = db_path
         self._alive = False
-        self._pending = []  # list of (doc_name, date_str, records, content_hash)
+        self._pending = []
         self._lock = threading.Lock()
         self._root = None
+        self._tree = None
+        self._date_listbox = None
+        self._info_var = None
+        self._db_records = []
+        self._current_filter_date = None
 
     def add_records(self, doc_name, date_str, records, content_hash):
         with self._lock:
@@ -414,191 +494,182 @@ class ParseResultPopup:
         self._alive = True
         root = tk.Tk()
         self._root = root
-        root.title('설비일보 파싱 결과')
-        root.geometry('1100x600')
+        root.title('설비일보 파서 (Word)')
+        root.geometry('1300x650')
         root.resizable(True, True)
         root.protocol('WM_DELETE_WINDOW', self._on_close)
+        _apply_dark_theme(root)
 
-        # 상단 정보 라벨
-        self._info_var = tk.StringVar(value='전체 이력 0건 | 신규 파싱 0건')
-        info_label = tk.Label(root, textvariable=self._info_var,
-                              font=('맑은 고딕', 10), anchor='w', padx=8)
-        info_label.pack(side='top', fill='x', pady=(6, 0))
+        # ── 상단 정보 바 ──
+        top_bar = tk.Frame(root, bg=C['bg_surface'], height=36)
+        top_bar.pack(fill='x')
+        top_bar.pack_propagate(False)
+        self._info_var = tk.StringVar(value='')
+        tk.Label(top_bar, textvariable=self._info_var,
+                 bg=C['bg_surface'], fg=C['text2'],
+                 font=('맑은 고딕', 10), padx=12).pack(side='left', fill='y')
+        self._status_label = tk.Label(top_bar, text='● 감지 중',
+                                       bg=C['bg_surface'], fg=C['green'],
+                                       font=('맑은 고딕', 9), padx=12)
+        self._status_label.pack(side='right', fill='y')
 
-        # 메인 영역 (좌측 날짜 패널 + 우측 Treeview)
-        main_frame = tk.Frame(root)
-        main_frame.pack(side='top', fill='both', expand=True, padx=6, pady=4)
+        # ── 메인 영역 ──
+        main = _dark_frame(root)
+        main.pack(fill='both', expand=True, padx=8, pady=4)
 
         # 좌측 날짜 패널
-        left_frame = tk.Frame(main_frame, width=160)
-        left_frame.pack(side='left', fill='y', padx=(0, 4))
-        left_frame.pack_propagate(False)
+        left = tk.Frame(main, bg=C['bg_panel'], width=155,
+                        highlightbackground=C['border'], highlightthickness=1)
+        left.pack(side='left', fill='y', padx=(0, 6))
+        left.pack_propagate(False)
 
-        tk.Label(left_frame, text='날짜 목록', font=('맑은 고딕', 9, 'bold')).pack(
-            side='top', anchor='w', padx=4, pady=(4, 2))
+        tk.Label(left, text='날짜 목록', bg=C['bg_panel'], fg=C['text3'],
+                 font=('맑은 고딕', 9, 'bold'), anchor='w', padx=8).pack(fill='x', pady=(8, 4))
 
-        self._date_listbox = tk.Listbox(left_frame, selectmode='single',
-                                        font=('맑은 고딕', 9))
-        self._date_listbox.pack(side='top', fill='both', expand=True, padx=2)
+        self._date_listbox = tk.Listbox(left, selectmode='single',
+                                        font=('맑은 고딕', 9),
+                                        bg=C['bg_deep'], fg=C['text2'],
+                                        selectbackground=C['accent'], selectforeground='white',
+                                        highlightthickness=0, bd=0, relief='flat')
+        self._date_listbox.pack(fill='both', expand=True, padx=4)
         self._date_listbox.bind('<<ListboxSelect>>', self._on_date_select)
 
-        all_btn = tk.Button(left_frame, text='전체 보기',
-                            command=self._show_all_dates)
-        all_btn.pack(side='top', fill='x', padx=2, pady=4)
+        _dark_button(left, '전체 보기', self._show_all_dates).pack(
+            fill='x', padx=4, pady=6)
 
         # 우측 Treeview
-        right_frame = tk.Frame(main_frame)
-        right_frame.pack(side='left', fill='both', expand=True)
+        right = _dark_frame(main)
+        right.pack(side='left', fill='both', expand=True)
 
-        columns = ('date', 'val1', 'content_col_name', 'item_text', 'raw_cell', 'val4')
-        col_labels = {
-            'date': '날짜',
-            'val1': '구분',
-            'content_col_name': '영역',
-            'item_text': '항목',
-            'raw_cell': '원문',
-            'val4': '비고',
-        }
-        col_widths = {
-            'date': 90,
-            'val1': 80,
-            'content_col_name': 80,
-            'item_text': 260,
-            'raw_cell': 260,
-            'val4': 120,
+        cols = ('date', 'val1', 'col_name', 'phenomenon', 'cause', 'action', 'raw_text', 'val4')
+        col_cfg = {
+            'date':       ('날짜', 85),
+            'val1':       ('구분', 60),
+            'col_name':   ('영역', 60),
+            'phenomenon': ('현상', 200),
+            'cause':      ('원인', 200),
+            'action':     ('조치', 200),
+            'raw_text':   ('기타', 220),
+            'val4':       ('비고', 100),
         }
 
-        tree_scroll_y = tk.Scrollbar(right_frame, orient='vertical')
-        tree_scroll_x = tk.Scrollbar(right_frame, orient='horizontal')
+        tree_frame = _dark_frame(right)
+        tree_frame.pack(fill='both', expand=True)
 
-        self._tree = ttk.Treeview(
-            right_frame,
-            columns=columns,
-            show='headings',
-            yscrollcommand=tree_scroll_y.set,
-            xscrollcommand=tree_scroll_x.set,
-            selectmode='extended',
-        )
-        tree_scroll_y.config(command=self._tree.yview)
-        tree_scroll_x.config(command=self._tree.xview)
+        sy = ttk.Scrollbar(tree_frame, orient='vertical')
+        sx = ttk.Scrollbar(tree_frame, orient='horizontal')
+        self._tree = ttk.Treeview(tree_frame, columns=cols, show='headings',
+                                   yscrollcommand=sy.set, xscrollcommand=sx.set,
+                                   selectmode='extended')
+        sy.config(command=self._tree.yview)
+        sx.config(command=self._tree.xview)
 
-        for col in columns:
-            self._tree.heading(col, text=col_labels[col])
-            self._tree.column(col, width=col_widths[col], minwidth=40, stretch=True)
+        for col in cols:
+            label, w = col_cfg[col]
+            self._tree.heading(col, text=label)
+            self._tree.column(col, width=w, minwidth=40, stretch=True)
 
-        self._tree.tag_configure('new', background='#e8f5e9')
+        self._tree.tag_configure('new', background=C['green_row'])
+        self._tree.bind('<Double-1>', self._on_cell_double_click)
 
-        tree_scroll_y.pack(side='right', fill='y')
-        tree_scroll_x.pack(side='bottom', fill='x')
-        self._tree.pack(side='left', fill='both', expand=True)
+        sy.pack(side='right', fill='y')
+        sx.pack(side='bottom', fill='x')
+        self._tree.pack(fill='both', expand=True)
 
-        # 하단 버튼 영역
-        btn_frame = tk.Frame(root)
-        btn_frame.pack(side='bottom', fill='x', padx=6, pady=6)
+        # ── 하단 버튼 바 ──
+        bot = tk.Frame(root, bg=C['bg_surface'], height=50)
+        bot.pack(fill='x')
+        bot.pack_propagate(False)
 
-        del_btn = tk.Button(btn_frame, text='선택 행 삭제',
-                            command=self._delete_selected)
-        del_btn.pack(side='left')
+        _dark_button(bot, '선택 행 삭제', self._delete_selected, 'danger').pack(
+            side='left', padx=12, pady=8)
 
-        csv_btn = tk.Button(btn_frame, text='CSV 내보내기',
-                            command=self._open_csv_dialog)
-        csv_btn.pack(side='left', padx=(8, 0))
-
-        save_btn = tk.Button(btn_frame, text='저장', width=10,
-                             command=self._save_all)
-        save_btn.pack(side='right')
-
-        skip_btn = tk.Button(btn_frame, text='스킵', width=10,
-                             command=self._on_close)
-        skip_btn.pack(side='right', padx=(0, 4))
+        _dark_button(bot, '저장', self._save_all, 'primary').pack(
+            side='right', padx=12, pady=8)
+        _dark_button(bot, '스킵', self._on_close).pack(
+            side='right', pady=8)
+        _dark_button(bot, 'CSV 내보내기', self._open_csv_dialog, 'export').pack(
+            side='right', padx=(0, 12), pady=8)
 
         # DB 이력 로드
-        self._db_records = []
         if self.db_path:
             try:
                 self._db_records = get_recent_history(self.db_path)
             except Exception:
                 self._db_records = []
 
-        self._current_filter_date = None
         self._refresh_tree()
         root.mainloop()
         self._alive = False
 
+    # ── Treeview 갱신 ──
     def _refresh_tree(self):
-        if self._root is None:
+        if not self._root:
             return
 
-        # 날짜 목록 갱신
-        date_set = {}
         with self._lock:
             pending_copy = list(self._pending)
 
+        # 날짜 집계
+        date_set = {}
         new_dates = set()
-        for doc_name, date_str, records, content_hash in pending_copy:
+        for _, date_str, records, _ in pending_copy:
             new_dates.add(date_str)
             date_set[date_str] = date_set.get(date_str, 0) + len(records)
-
         for rec in self._db_records:
             d = rec.get('date', '')
-            if d not in date_set:
-                date_set[d] = 0
-            date_set[d] += 1
+            date_set[d] = date_set.get(d, 0) + 1
 
+        # 날짜 목록
         self._date_listbox.delete(0, 'end')
-        sorted_dates = sorted(date_set.keys(), reverse=True)
-        for d in sorted_dates:
-            label = f'{d} ({date_set[d]})'
+        for d in sorted(date_set.keys(), reverse=True):
+            label = f'{"● " if d in new_dates else "  "}{d} ({date_set[d]})'
             self._date_listbox.insert('end', label)
             if d in new_dates:
                 idx = self._date_listbox.size() - 1
-                self._date_listbox.itemconfig(idx, {'bg': '#c8e6c9', 'fg': 'black'})
+                self._date_listbox.itemconfig(idx, fg=C['green'])
 
-        # Treeview 갱신
+        # Treeview
         self._tree.delete(*self._tree.get_children())
 
-        # pending 행 표시
-        for doc_name, date_str, records, content_hash in pending_copy:
+        for doc_name, date_str, records, _ in pending_copy:
             if self._current_filter_date and date_str != self._current_filter_date:
                 continue
             for rec in records:
-                rec_id = rec.get('id', '')
-                iid = self._tree.insert('', 'end', tags=('new',), values=(
-                    _flat(rec.get('date', '')),
-                    _flat(rec.get('val1', '')),
-                    _flat(rec.get('content_col_name', '')),
-                    _flat(rec.get('item_text', '')),
-                    _flat(rec.get('raw_cell', '')),
-                    _flat(rec.get('val4', '')),
-                ))
-                self._tree.item(iid, tags=('new', f'pending:{doc_name}:{date_str}'))
+                phen = _flat(rec.get('phenomenon', ''))
+                cause = _flat(rec.get('cause', ''))
+                action = _flat(rec.get('action', ''))
+                raw = _flat(rec.get('raw_text', ''))
+                iid = self._tree.insert('', 'end', tags=('new', f'p:{doc_name}:{date_str}'),
+                    values=(rec.get('date',''), _flat(rec.get('val1','')),
+                            _flat(rec.get('content_col_name','')),
+                            phen, cause, action, raw, _flat(rec.get('val4',''))))
 
-        # DB 이력 행 표시
         for rec in self._db_records:
             d = rec.get('date', '')
             if self._current_filter_date and d != self._current_filter_date:
                 continue
-            rec_id = rec.get('id', '')
-            iid = self._tree.insert('', 'end', values=(
-                _flat(d),
-                _flat(rec.get('val1', '')),
-                _flat(rec.get('content_col_name', '')),
-                _flat(rec.get('item_text', '')),
-                _flat(rec.get('raw_cell', '')),
-                _flat(rec.get('val4', '')),
-            ), tags=(f'dbid:{rec_id}',))
+            phen = _flat(rec.get('phenomenon', ''))
+            cause = _flat(rec.get('cause', ''))
+            action = _flat(rec.get('action', ''))
+            raw = _flat(rec.get('raw_text', ''))
+            self._tree.insert('', 'end', tags=(f'db:{rec.get("id","")}',),
+                values=(d, _flat(rec.get('val1','')),
+                        _flat(rec.get('content_col_name','')),
+                        phen, cause, action, raw, _flat(rec.get('val4',''))))
 
-        # 정보 라벨 갱신
-        total_history = len(self._db_records)
+        total_db = len(self._db_records)
         total_new = sum(len(r) for _, _, r, _ in pending_copy)
-        self._info_var.set(f'전체 이력 {total_history}건 | 신규 파싱 {total_new}건')
+        self._info_var.set(f'전체 이력: {total_db}건  ·  신규 파싱: {total_new}건 ({len(pending_copy)}파일)')
 
+    # ── 날짜 선택 ──
     def _on_date_select(self, event):
         sel = self._date_listbox.curselection()
         if not sel:
             return
-        label = self._date_listbox.get(sel[0])
-        date_str = label.split(' ')[0]
+        label = self._date_listbox.get(sel[0]).strip()
+        # "● 2024-05-03 (12)" or "  2024-05-03 (12)"
+        date_str = label.lstrip('● ').split(' (')[0].strip()
         self._current_filter_date = date_str
         self._refresh_tree()
 
@@ -607,43 +678,80 @@ class ParseResultPopup:
         self._date_listbox.selection_clear(0, 'end')
         self._refresh_tree()
 
+    # ── 더블클릭 편집 ──
+    def _on_cell_double_click(self, event):
+        item = self._tree.identify_row(event.y)
+        col = self._tree.identify_column(event.x)
+        if not item or not col:
+            return
+        col_idx = int(col.replace('#', '')) - 1
+        col_names = ['날짜', '구분', '영역', '현상', '원인', '조치', '기타', '비고']
+        col_name = col_names[col_idx] if col_idx < len(col_names) else ''
+        values = list(self._tree.item(item, 'values'))
+        current_val = values[col_idx] if col_idx < len(values) else ''
+
+        edit_win = tk.Toplevel(self._root)
+        edit_win.title(f'{col_name} 편집')
+        edit_win.geometry('500x300')
+        edit_win.configure(bg=C['bg_panel'])
+        edit_win.attributes('-topmost', True)
+        edit_win.grab_set()
+
+        tk.Label(edit_win, text=f'[ {col_name} ]',
+                 font=('맑은 고딕', 11, 'bold'),
+                 bg=C['bg_panel'], fg=C['text_accent'],
+                 padx=10, pady=8).pack(anchor='w')
+
+        btn_frame = tk.Frame(edit_win, bg=C['bg_panel'])
+        btn_frame.pack(side='bottom', fill='x', padx=10, pady=10)
+
+        def apply_edit():
+            new_val = _flat(text_widget.get('1.0', 'end').strip())
+            values[col_idx] = new_val
+            self._tree.item(item, values=values)
+            edit_win.destroy()
+
+        _dark_button(btn_frame, '저장', apply_edit, 'primary').pack(side='right', padx=4)
+        _dark_button(btn_frame, '닫기', edit_win.destroy).pack(side='right')
+
+        text_frame = tk.Frame(edit_win, bg=C['bg_panel'])
+        text_frame.pack(fill='both', expand=True, padx=10, pady=(0, 4))
+
+        text_widget = tk.Text(text_frame, font=('맑은 고딕', 10), wrap='word',
+                              bg=C['bg_deep'], fg=C['text1'],
+                              insertbackground=C['text1'],
+                              highlightbackground=C['border'], highlightthickness=1,
+                              relief='flat')
+        text_widget.insert('1.0', current_val)
+        text_widget.pack(fill='both', expand=True)
+
+    # ── 행 삭제 ──
     def _delete_selected(self):
         selected = self._tree.selection()
         if not selected:
             return
-
-        db_ids_to_delete = []
-        pending_keys_to_remove = set()
-
+        db_ids, pending_keys = [], set()
         for iid in selected:
-            tags = self._tree.item(iid, 'tags')
-            for tag in tags:
-                if tag.startswith('dbid:'):
+            for tag in self._tree.item(iid, 'tags'):
+                if tag.startswith('db:'):
                     try:
-                        db_ids_to_delete.append(int(tag.split(':', 1)[1]))
+                        db_ids.append(int(tag.split(':', 1)[1]))
                     except ValueError:
                         pass
-                elif tag.startswith('pending:'):
+                elif tag.startswith('p:'):
                     parts = tag.split(':', 2)
                     if len(parts) == 3:
-                        pending_keys_to_remove.add((parts[1], parts[2]))
-
-        # DB 행 삭제
-        if db_ids_to_delete and self.db_path:
-            delete_by_ids(self.db_path, db_ids_to_delete)
-            self._db_records = [r for r in self._db_records
-                                 if r.get('id') not in db_ids_to_delete]
-
-        # pending 행 제거
-        if pending_keys_to_remove:
+                        pending_keys.add((parts[1], parts[2]))
+        if db_ids and self.db_path:
+            delete_by_ids(self.db_path, db_ids)
+            self._db_records = [r for r in self._db_records if r.get('id') not in db_ids]
+        if pending_keys:
             with self._lock:
-                self._pending = [
-                    (dn, ds, recs, ch) for dn, ds, recs, ch in self._pending
-                    if (dn, ds) not in pending_keys_to_remove
-                ]
-
+                self._pending = [(dn, ds, recs, ch) for dn, ds, recs, ch in self._pending
+                                 if (dn, ds) not in pending_keys]
         self._refresh_tree()
 
+    # ── 저장 ──
     def _save_all(self):
         with self._lock:
             pending_copy = list(self._pending)
@@ -673,109 +781,78 @@ class CsvExportDialog:
         self.db_path = db_path
         self.win = tk.Toplevel(parent)
         self.win.title('CSV 내보내기')
-        self.win.geometry('380x220')
+        self.win.geometry('400x280')
+        self.win.configure(bg=C['bg_panel'])
         self.win.resizable(False, False)
         self.win.grab_set()
 
-        # 범위 선택
-        range_frame = tk.Frame(self.win)
-        range_frame.pack(fill='x', padx=16, pady=(16, 4))
-        tk.Label(range_frame, text='범위:').pack(side='left')
+        tk.Label(self.win, text='CSV 내보내기', font=('맑은 고딕', 12, 'bold'),
+                 bg=C['bg_panel'], fg=C['text_accent']).pack(padx=16, pady=(16, 12), anchor='w')
+
+        # 범위
+        rf = tk.Frame(self.win, bg=C['bg_panel'])
+        rf.pack(fill='x', padx=16, pady=4)
+        tk.Label(rf, text='범위', bg=C['bg_panel'], fg=C['text3'],
+                 font=('맑은 고딕', 9)).pack(anchor='w')
         self._range_var = tk.StringVar(value='날짜 범위 지정')
-        self._range_combo = ttk.Combobox(
-            range_frame,
-            textvariable=self._range_var,
-            values=['날짜 범위 지정', '전체 내보내기'],
-            state='readonly',
-            width=16,
-        )
-        self._range_combo.pack(side='left', padx=(8, 0))
-        self._range_combo.bind('<<ComboboxSelected>>', self._on_range_change)
+        ttk.Combobox(rf, textvariable=self._range_var,
+                     values=['날짜 범위 지정', '전체 내보내기'],
+                     state='readonly', width=20).pack(fill='x', pady=(2, 0))
 
-        # 시작일/종료일
-        date_frame = tk.Frame(self.win)
-        date_frame.pack(fill='x', padx=16, pady=4)
+        # 날짜
+        df = tk.Frame(self.win, bg=C['bg_panel'])
+        df.pack(fill='x', padx=16, pady=4)
+        for i, (lbl, var_name) in enumerate([('시작일', '_start_var'), ('종료일', '_end_var')]):
+            f = tk.Frame(df, bg=C['bg_panel'])
+            f.pack(side='left', expand=True, fill='x', padx=(0, 8) if i == 0 else 0)
+            tk.Label(f, text=lbl, bg=C['bg_panel'], fg=C['text3'],
+                     font=('맑은 고딕', 9)).pack(anchor='w')
+            sv = tk.StringVar()
+            setattr(self, var_name, sv)
+            e = tk.Entry(f, textvariable=sv, font=('맑은 고딕', 10),
+                         bg=C['bg_deep'], fg=C['text1'], insertbackground=C['text1'],
+                         highlightbackground=C['border'], highlightthickness=1, relief='flat')
+            e.pack(fill='x', pady=(2, 0))
 
-        tk.Label(date_frame, text='시작일:').grid(row=0, column=0, sticky='w', pady=2)
-        self._start_var = tk.StringVar()
-        self._start_entry = tk.Entry(date_frame, textvariable=self._start_var, width=14)
-        self._start_entry.grid(row=0, column=1, padx=(8, 0), sticky='w')
-
-        tk.Label(date_frame, text='종료일:').grid(row=1, column=0, sticky='w', pady=2)
-        self._end_var = tk.StringVar()
-        self._end_entry = tk.Entry(date_frame, textvariable=self._end_var, width=14)
-        self._end_entry.grid(row=1, column=1, padx=(8, 0), sticky='w')
-
-        # 파일명 미리보기
-        self._preview_var = tk.StringVar(value='')
-        preview_label = tk.Label(self.win, textvariable=self._preview_var,
-                                  font=('맑은 고딕', 9), fg='gray')
-        preview_label.pack(fill='x', padx=16, pady=(4, 0))
+        # 미리보기
+        self._preview_var = tk.StringVar()
+        pf = tk.Frame(self.win, bg=C['bg_deep'], highlightbackground=C['border'], highlightthickness=1)
+        pf.pack(fill='x', padx=16, pady=8)
+        tk.Label(pf, textvariable=self._preview_var,
+                 bg=C['bg_deep'], fg=C['green'], font=('Consolas', 10),
+                 padx=8, pady=6).pack(fill='x')
 
         self._start_var.trace_add('write', self._update_preview)
         self._end_var.trace_add('write', self._update_preview)
-        self._range_var.trace_add('write', self._update_preview)
+        self._update_preview()
 
         # 버튼
-        btn_frame = tk.Frame(self.win)
-        btn_frame.pack(side='bottom', fill='x', padx=16, pady=12)
+        bf = tk.Frame(self.win, bg=C['bg_panel'])
+        bf.pack(fill='x', padx=16, pady=(0, 12))
+        _dark_button(bf, '내보내기', self._export, 'export').pack(side='right')
+        _dark_button(bf, '취소', self.win.destroy).pack(side='right', padx=(0, 8))
 
-        tk.Button(btn_frame, text='취소', width=10,
-                  command=self.win.destroy).pack(side='right')
-        tk.Button(btn_frame, text='내보내기', width=10,
-                  command=self._export).pack(side='right', padx=(0, 4))
-
-        self._update_preview()
-
-    def _on_range_change(self, event=None):
+    def _update_preview(self, *_):
+        s = self._start_var.get().replace('-', '_')
+        e = self._end_var.get().replace('-', '_')
         if self._range_var.get() == '전체 내보내기':
-            self._start_entry.config(state='disabled')
-            self._end_entry.config(state='disabled')
+            self._preview_var.set('전체.csv')
+        elif s and e:
+            self._preview_var.set(f'{s}_{e}.csv')
         else:
-            self._start_entry.config(state='normal')
-            self._end_entry.config(state='normal')
-        self._update_preview()
-
-    def _update_preview(self, *args):
-        if self._range_var.get() == '전체 내보내기':
-            self._preview_var.set('파일명: 전체.csv')
-        else:
-            s = self._start_var.get().replace('-', '_')
-            e = self._end_var.get().replace('-', '_')
-            if s and e:
-                self._preview_var.set(f'파일명: {s}_{e}.csv')
-            elif s:
-                self._preview_var.set(f'파일명: {s}_~.csv')
-            elif e:
-                self._preview_var.set(f'파일명: ~_{e}.csv')
-            else:
-                self._preview_var.set('파일명: (미리보기)')
+            self._preview_var.set('...')
 
     def _export(self):
         is_all = self._range_var.get() == '전체 내보내기'
-        start_date = None if is_all else (self._start_var.get().strip() or None)
-        end_date = None if is_all else (self._end_var.get().strip() or None)
-
-        if is_all:
-            default_name = '전체.csv'
-        else:
-            s = (start_date or '').replace('-', '_')
-            e = (end_date or '').replace('-', '_')
-            default_name = f'{s}_{e}.csv' if (s or e) else 'export.csv'
-
-        output_path = filedialog.asksaveasfilename(
-            parent=self.win,
-            title='CSV 저장',
-            defaultextension='.csv',
-            filetypes=[('CSV 파일', '*.csv'), ('모든 파일', '*.*')],
-            initialfile=default_name,
-        )
-        if not output_path:
+        sd = None if is_all else (self._start_var.get().strip() or None)
+        ed = None if is_all else (self._end_var.get().strip() or None)
+        default = '전체.csv' if is_all else self._preview_var.get()
+        path = filedialog.asksaveasfilename(parent=self.win, title='CSV 저장',
+            defaultextension='.csv', filetypes=[('CSV', '*.csv')], initialfile=default)
+        if not path:
             return
-
-        count = export_csv(self.db_path, output_path,
-                           start_date=start_date, end_date=end_date)
-        tk.messagebox.showinfo('완료', f'{count}건 내보내기 완료', parent=self.win)
+        count = export_csv(self.db_path, path, start_date=sd, end_date=ed)
+        messagebox.showinfo('완료', f'{count}건 내보내기 완료', parent=self.win)
         self.win.destroy()
 
 
@@ -783,11 +860,9 @@ def ask_date_input(doc_name):
     root = tk.Tk()
     root.withdraw()
     root.attributes('-topmost', True)
-    date_str = simpledialog.askstring(
-        '날짜 입력',
+    date_str = simpledialog.askstring('날짜 입력',
         f'"{doc_name}"에서 날짜를 찾을 수 없습니다.\n날짜를 입력해 주십시오 (예: 2024-05-03):',
-        parent=root
-    )
+        parent=root)
     root.destroy()
     return date_str
 
@@ -810,40 +885,37 @@ class TrayApp:
         self.db_path = db_path
         self.save_all_callback = save_all_callback or (lambda p: None)
         self.icon = None
-        self.auto_save = False  # False = 확인 후 저장 (기본)
+        self.auto_save = False
 
     def start(self):
         menu = pystray.Menu(
             pystray.MenuItem('파싱 뷰어 열기', self._show_viewer),
             pystray.Menu.SEPARATOR,
-            pystray.MenuItem('확인 후 저장', self._set_confirm_mode,
+            pystray.MenuItem('확인 후 저장', self._set_confirm,
                              checked=lambda item: not self.auto_save),
-            pystray.MenuItem('즉시 저장', self._set_auto_mode,
+            pystray.MenuItem('즉시 저장', self._set_auto,
                              checked=lambda item: self.auto_save),
             pystray.Menu.SEPARATOR,
             pystray.MenuItem('종료', self._quit),
         )
-        self.icon = pystray.Icon(
-            '설비일보 Word 파서', create_icon_image(),
-            '설비일보 Word 파서', menu
-        )
+        self.icon = pystray.Icon('설비일보 Word 파서', create_icon_image(),
+                                  '설비일보 Word 파서', menu)
         self.icon.run()
 
-    def notify(self, message):
+    def notify(self, msg):
         if self.icon:
-            self.icon.notify(message, '설비일보 Word 파서')
+            self.icon.notify(msg, '설비일보 Word 파서')
 
     def _show_viewer(self, icon, item):
         popup = ParseResultPopup.get_or_create(
-            on_save_all=self.save_all_callback, db_path=self.db_path
-        )
+            on_save_all=self.save_all_callback, db_path=self.db_path)
         if not popup._alive:
             threading.Thread(target=popup._show, daemon=True).start()
 
-    def _set_confirm_mode(self, icon, item):
+    def _set_confirm(self, icon, item):
         self.auto_save = False
 
-    def _set_auto_mode(self, icon, item):
+    def _set_auto(self, icon, item):
         self.auto_save = True
 
     def _quit(self, icon, item):
@@ -855,7 +927,6 @@ class TrayApp:
 
 def main():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-
     lock_file = open(LOCK_PATH, 'w')
     try:
         msvcrt.locking(lock_file.fileno(), msvcrt.LK_NBLCK, 1)
@@ -877,12 +948,10 @@ def main():
 
     def on_new_parse(doc_name, date_str, records, content_hash):
         if tray.auto_save:
-            # 즉시 저장 모드
             delete_by_source(DB_PATH, doc_name, date_str)
             insert_records(DB_PATH, records, content_hash)
             tray.notify(f'설비일보 {date_str} 저장 완료 ({len(records)}건)')
         else:
-            # 확인 후 저장 모드
             tray.notify(f'설비일보 {date_str} 파싱 완료 ({len(records)}건)')
             popup = ParseResultPopup.get_or_create(on_save_all=save_all, db_path=DB_PATH)
             popup.add_records(doc_name, date_str, records, content_hash)
@@ -902,13 +971,10 @@ def main():
         return ask_date_input(doc_name)
 
     watcher = WordWatcher(
-        db_path=DB_PATH,
-        on_new_parse=on_new_parse,
+        db_path=DB_PATH, on_new_parse=on_new_parse,
         on_duplicate_same=on_duplicate_same,
         on_duplicate_changed=on_duplicate_changed,
-        on_date_missing=on_date_missing,
-        on_no_table=on_no_table,
-    )
+        on_date_missing=on_date_missing, on_no_table=on_no_table)
     watcher.start()
     tray.start()
     watcher.stop()

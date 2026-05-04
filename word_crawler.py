@@ -37,8 +37,15 @@ DATE_PATTERNS_FILENAME = [
     re.compile(r'(\d{2})(\d{2})(\d{2})'),
 ]
 
-DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'data', 'facility_daily.db')
-LOCK_PATH = os.path.join(os.path.dirname(DB_PATH), 'word_crawler.lock')
+# PyInstaller 빌드 시 exe 경로, 일반 실행 시 py 경로
+if getattr(sys, 'frozen', False):
+    _BASE_DIR = os.path.dirname(sys.executable)
+else:
+    _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+AUTOSAVE_DIR = os.path.join(_BASE_DIR, 'autosave')
+DB_PATH = os.path.join(AUTOSAVE_DIR, 'facility_daily.db')
+LOCK_PATH = os.path.join(AUTOSAVE_DIR, 'word_crawler.lock')
 
 # 다크 테마 색상
 C = {
@@ -911,12 +918,15 @@ class ParseResultPopup:
         sd = None if is_all else (self._csv_start_var.get().strip() or None)
         ed = None if is_all else (self._csv_end_var.get().strip() or None)
         default = '전체.csv' if is_all else self._csv_preview_var.get()
+        # 기본 저장 경로: autosave 폴더
+        os.makedirs(AUTOSAVE_DIR, exist_ok=True)
         path = filedialog.asksaveasfilename(parent=self._root, title='CSV 저장',
-            defaultextension='.csv', filetypes=[('CSV', '*.csv')], initialfile=default)
+            defaultextension='.csv', filetypes=[('CSV', '*.csv')],
+            initialfile=default, initialdir=AUTOSAVE_DIR)
         if not path:
             return
         count = export_csv(self.db_path, path, start_date=sd, end_date=ed)
-        messagebox.showinfo('완료', f'{count}건 내보내기 완료', parent=self._root)
+        messagebox.showinfo('완료', f'{count}건 내보내기 완료\n경로: {path}', parent=self._root)
 
     def _on_close(self):
         self._alive = False

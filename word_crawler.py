@@ -558,22 +558,30 @@ class ParseResultPopup:
         right = _dark_frame(main)
         right.pack(side='left', fill='both', expand=True)
 
-        cols = ('date', 'val1', 'col_name', 'title', 'phenomenon', 'cause', 'action', 'raw_text', 'val4')
-        col_cfg = {
-            'date':       ('날짜', 85),
-            'val1':       ('구분', 60),
-            'col_name':   ('영역', 60),
-            'title':      ('제목', 150),
-            'phenomenon': ('현상', 180),
-            'cause':      ('원인', 180),
-            'action':     ('조치', 180),
-            'raw_text':   ('기타', 180),
-            'val4':       ('비고', 100),
-        }
+        # (db_col_id, db_col_name, display_label, width)
+        self._col_defs = [
+            ('date',             'date',             '날짜',   85),
+            ('source_file',      'source_file',      '파일명', 120),
+            ('row_num',          'row_num',           '행번호', 50),
+            ('header1',          'header1',           '헤더1',  60),
+            ('val1',             'val1',              '구분',   60),
+            ('content_col_name', 'content_col_name',  '영역',   60),
+            ('title',            'title',             '제목',  140),
+            ('phenomenon',       'phenomenon',        '현상',  170),
+            ('cause',            'cause',             '원인',  170),
+            ('action',           'action',            '조치',  170),
+            ('raw_text',         'raw_text',          '기타',  170),
+            ('raw_cell',         'raw_cell',          '원문',  150),
+            ('header4',          'header4',           '헤더4',  60),
+            ('val4',             'val4',              '비고',  100),
+            ('content_hash',     'content_hash',      '해시',   80),
+        ]
+        cols = tuple(d[0] for d in self._col_defs)
 
         tree_frame = _dark_frame(right)
         tree_frame.pack(fill='both', expand=True)
 
+        # 2중 헤더: 1행=DB 컬럼명, 2행=표시명 → 합쳐서 heading에 표시
         sy = ttk.Scrollbar(tree_frame, orient='vertical')
         sx = ttk.Scrollbar(tree_frame, orient='horizontal')
         self._tree = ttk.Treeview(tree_frame, columns=cols, show='headings',
@@ -582,10 +590,15 @@ class ParseResultPopup:
         sy.config(command=self._tree.yview)
         sx.config(command=self._tree.xview)
 
-        for col in cols:
-            label, w = col_cfg[col]
-            self._tree.heading(col, text=label)
-            self._tree.column(col, width=w, minwidth=40, stretch=True)
+        for col_id, db_name, label, w in self._col_defs:
+            # 2줄 헤더: DB컬럼명 / 표시명
+            heading_text = f'{db_name}\n({label})'
+            self._tree.heading(col_id, text=heading_text)
+            self._tree.column(col_id, width=w, minwidth=40, stretch=True)
+
+        # Treeview 헤더 높이를 2줄에 맞게 조정
+        style = ttk.Style(root)
+        style.configure('Treeview.Heading', padding=(4, 6))
 
         self._tree.tag_configure('new', background=C['green_row'])
         self._tree.bind('<Double-1>', self._on_cell_double_click)
@@ -700,33 +713,24 @@ class ParseResultPopup:
         # Treeview
         self._tree.delete(*self._tree.get_children())
 
-        for doc_name, date_str, records, _ in pending_copy:
+        def _rec_to_values(rec):
+            return tuple(_flat(rec.get(d[1], '')) for d in self._col_defs)
+
+        for doc_name, date_str, records, content_hash in pending_copy:
             if self._current_filter_date and date_str != self._current_filter_date:
                 continue
             for rec in records:
+                # pending 레코드에 content_hash 추가 (표시용)
+                rec_with_hash = dict(rec, content_hash=content_hash or '')
                 self._tree.insert('', 'end', tags=('new', f'p:{doc_name}:{date_str}'),
-                    values=(rec.get('date',''), _flat(rec.get('val1','')),
-                            _flat(rec.get('content_col_name','')),
-                            _flat(rec.get('title','')),
-                            _flat(rec.get('phenomenon','')),
-                            _flat(rec.get('cause','')),
-                            _flat(rec.get('action','')),
-                            _flat(rec.get('raw_text','')),
-                            _flat(rec.get('val4',''))))
+                    values=_rec_to_values(rec_with_hash))
 
         for rec in self._db_records:
             d = rec.get('date', '')
             if self._current_filter_date and d != self._current_filter_date:
                 continue
             self._tree.insert('', 'end', tags=(f'db:{rec.get("id","")}',),
-                values=(d, _flat(rec.get('val1','')),
-                        _flat(rec.get('content_col_name','')),
-                        _flat(rec.get('title','')),
-                        _flat(rec.get('phenomenon','')),
-                        _flat(rec.get('cause','')),
-                        _flat(rec.get('action','')),
-                        _flat(rec.get('raw_text','')),
-                        _flat(rec.get('val4',''))))
+                values=_rec_to_values(rec))
 
         total_db = len(self._db_records)
         total_new = sum(len(r) for _, _, r, _ in pending_copy)
@@ -758,8 +762,7 @@ class ParseResultPopup:
         if not item or not col:
             return
         col_idx = int(col.replace('#', '')) - 1
-        col_names = ['날짜', '구분', '영역', '제목', '현상', '원인', '조치', '기타', '비고']
-        col_name = col_names[col_idx] if col_idx < len(col_names) else ''
+        col_name = self._col_defs[col_idx][2] if col_idx < len(self._col_defs) else ''
         values = list(self._tree.item(item, 'values'))
         current_val = values[col_idx] if col_idx < len(values) else ''
 

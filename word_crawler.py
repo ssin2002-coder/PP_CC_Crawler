@@ -435,10 +435,12 @@ def _apply_dark_theme(root):
     style.configure('Treeview',
                     background=C['bg_panel'], foreground=C['text1'],
                     fieldbackground=C['bg_panel'], borderwidth=0,
-                    font=('맑은 고딕', 9), rowheight=24)
+                    font=('맑은 고딕', 9), rowheight=24,
+                    anchor='center')
     style.configure('Treeview.Heading',
                     background=C['bg_surface'], foreground=C['text_accent'],
-                    font=('맑은 고딕', 9, 'bold'), borderwidth=0)
+                    font=('맑은 고딕', 9, 'bold'), borderwidth=0,
+                    anchor='center')
     style.map('Treeview',
               background=[('selected', C['accent'])],
               foreground=[('selected', 'white')])

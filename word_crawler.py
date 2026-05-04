@@ -75,6 +75,7 @@ def init_db(db_path=None):
             header1          TEXT,
             val1             TEXT,
             content_col_name TEXT,
+            title            TEXT,
             phenomenon       TEXT,
             cause            TEXT,
             action           TEXT,
@@ -99,12 +100,12 @@ def insert_records(db_path, records, content_hash=None):
         conn.execute('''
             INSERT INTO facility_daily
             (date, source_file, row_num, header1, val1, content_col_name,
-             phenomenon, cause, action, raw_text, raw_cell, header4, val4, content_hash)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             title, phenomenon, cause, action, raw_text, raw_cell, header4, val4, content_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             rec['date'], rec['source_file'], rec['row_num'],
             rec['header1'], rec['val1'], rec['content_col_name'],
-            rec.get('phenomenon', ''), rec.get('cause', ''), rec.get('action', ''),
+            rec.get('title', ''), rec.get('phenomenon', ''), rec.get('cause', ''), rec.get('action', ''),
             rec.get('raw_text', ''), rec['raw_cell'],
             rec['header4'], rec['val4'], content_hash,
         ))
@@ -208,10 +209,18 @@ def _strip_numbering(text):
 
 
 def parse_item_block(text):
-    """한 블록(2+ 개행으로 분리된 단위)에서 [현상][원인][조치] 태그 추출.
-    태그가 없으면 raw_text에 전체 텍스트를 넣음. 번호 패턴은 제거."""
+    """한 블록(2+ 개행으로 분리된 단위)에서 title + [현상][원인][조치] 태그 추출.
+    [현상] 앞의 텍스트 → title. 태그가 없으면 raw_text에 전체 텍스트."""
     text = _strip_numbering(text)
-    parsed = {'phenomenon': '', 'cause': '', 'action': '', 'raw_text': ''}
+    parsed = {'title': '', 'phenomenon': '', 'cause': '', 'action': '', 'raw_text': ''}
+
+    # [현상] 앞의 텍스트를 title로 추출
+    first_tag = re.search(r'\[(현상|원인|조치)\]', text)
+    if first_tag:
+        before = text[:first_tag.start()].strip()
+        if before:
+            parsed['title'] = before
+
     for match in TAG_PATTERN.finditer(text):
         tag, content = match.group(1), match.group(2).strip()
         if tag == '현상':
@@ -226,6 +235,9 @@ def parse_item_block(text):
     else:
         leftover = re.sub(r'\[(현상|원인|조치)\]\s*[^\r\n\[\]]+', '', text).strip()
         leftover = '\n'.join(line.strip() for line in leftover.split('\n') if line.strip())
+        # title로 이미 추출한 부분 제거
+        if parsed['title'] and leftover.startswith(parsed['title']):
+            leftover = leftover[len(parsed['title']):].strip()
         parsed['raw_text'] = leftover
 
     return parsed
@@ -293,6 +305,7 @@ def parse_table_data(headers, rows_data, date_str, source_file):
                     'header1': h1_name,
                     'val1': val1,
                     'content_col_name': col_name,
+                    'title': parsed['title'],
                     'phenomenon': parsed['phenomenon'],
                     'cause': parsed['cause'],
                     'action': parsed['action'],
@@ -545,15 +558,16 @@ class ParseResultPopup:
         right = _dark_frame(main)
         right.pack(side='left', fill='both', expand=True)
 
-        cols = ('date', 'val1', 'col_name', 'phenomenon', 'cause', 'action', 'raw_text', 'val4')
+        cols = ('date', 'val1', 'col_name', 'title', 'phenomenon', 'cause', 'action', 'raw_text', 'val4')
         col_cfg = {
             'date':       ('날짜', 85),
             'val1':       ('구분', 60),
             'col_name':   ('영역', 60),
-            'phenomenon': ('현상', 200),
-            'cause':      ('원인', 200),
-            'action':     ('조치', 200),
-            'raw_text':   ('기타', 220),
+            'title':      ('제목', 150),
+            'phenomenon': ('현상', 180),
+            'cause':      ('원인', 180),
+            'action':     ('조치', 180),
+            'raw_text':   ('기타', 180),
             'val4':       ('비고', 100),
         }
 
@@ -640,27 +654,29 @@ class ParseResultPopup:
             if self._current_filter_date and date_str != self._current_filter_date:
                 continue
             for rec in records:
-                phen = _flat(rec.get('phenomenon', ''))
-                cause = _flat(rec.get('cause', ''))
-                action = _flat(rec.get('action', ''))
-                raw = _flat(rec.get('raw_text', ''))
-                iid = self._tree.insert('', 'end', tags=('new', f'p:{doc_name}:{date_str}'),
+                self._tree.insert('', 'end', tags=('new', f'p:{doc_name}:{date_str}'),
                     values=(rec.get('date',''), _flat(rec.get('val1','')),
                             _flat(rec.get('content_col_name','')),
-                            phen, cause, action, raw, _flat(rec.get('val4',''))))
+                            _flat(rec.get('title','')),
+                            _flat(rec.get('phenomenon','')),
+                            _flat(rec.get('cause','')),
+                            _flat(rec.get('action','')),
+                            _flat(rec.get('raw_text','')),
+                            _flat(rec.get('val4',''))))
 
         for rec in self._db_records:
             d = rec.get('date', '')
             if self._current_filter_date and d != self._current_filter_date:
                 continue
-            phen = _flat(rec.get('phenomenon', ''))
-            cause = _flat(rec.get('cause', ''))
-            action = _flat(rec.get('action', ''))
-            raw = _flat(rec.get('raw_text', ''))
             self._tree.insert('', 'end', tags=(f'db:{rec.get("id","")}',),
                 values=(d, _flat(rec.get('val1','')),
                         _flat(rec.get('content_col_name','')),
-                        phen, cause, action, raw, _flat(rec.get('val4',''))))
+                        _flat(rec.get('title','')),
+                        _flat(rec.get('phenomenon','')),
+                        _flat(rec.get('cause','')),
+                        _flat(rec.get('action','')),
+                        _flat(rec.get('raw_text','')),
+                        _flat(rec.get('val4',''))))
 
         total_db = len(self._db_records)
         total_new = sum(len(r) for _, _, r, _ in pending_copy)
@@ -689,7 +705,7 @@ class ParseResultPopup:
         if not item or not col:
             return
         col_idx = int(col.replace('#', '')) - 1
-        col_names = ['날짜', '구분', '영역', '현상', '원인', '조치', '기타', '비고']
+        col_names = ['날짜', '구분', '영역', '제목', '현상', '원인', '조치', '기타', '비고']
         col_name = col_names[col_idx] if col_idx < len(col_names) else ''
         values = list(self._tree.item(item, 'values'))
         current_val = values[col_idx] if col_idx < len(values) else ''

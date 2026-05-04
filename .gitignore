@@ -1,0 +1,9 @@
+.venv/
+autosave/
+data/
+__pycache__/
+*.pyc
+.pytest_cache/
+*.spec
+build/
+dist/

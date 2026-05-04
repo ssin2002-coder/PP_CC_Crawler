@@ -581,28 +581,58 @@ class ParseResultPopup:
         tree_frame = _dark_frame(right)
         tree_frame.pack(fill='both', expand=True)
 
-        sy = ttk.Scrollbar(tree_frame, orient='vertical')
+        # ── 고정 한글 헤더 Treeview (스크롤 안 됨) ──
+        self._header_tree = ttk.Treeview(tree_frame, columns=cols, show='headings',
+                                          height=1, selectmode='none')
+        for col_id, db_name, label, w in self._col_defs:
+            self._header_tree.heading(col_id, text=db_name)
+            self._header_tree.column(col_id, width=w, minwidth=40, stretch=True)
+        self._header_tree.tag_configure('label_row',
+                                         background=C['bg_surface'], foreground=C['text_accent'])
+        display_labels = tuple(d[2] for d in self._col_defs)
+        self._header_tree.insert('', 'end', values=display_labels, tags=('label_row',))
+        self._header_tree.pack(fill='x')
+        # 고정 헤더 클릭/선택 방지
+        self._header_tree.bind('<Button-1>', lambda e: 'break')
+        self._header_tree.bind('<Double-1>', lambda e: 'break')
+
+        # ── 데이터 Treeview (스크롤 가능) ──
+        data_frame = _dark_frame(tree_frame)
+        data_frame.pack(fill='both', expand=True)
+
+        sy = ttk.Scrollbar(data_frame, orient='vertical')
         sx = ttk.Scrollbar(tree_frame, orient='horizontal')
-        self._tree = ttk.Treeview(tree_frame, columns=cols, show='headings',
+
+        self._tree = ttk.Treeview(data_frame, columns=cols, show='headings',
                                    yscrollcommand=sy.set, xscrollcommand=sx.set,
                                    selectmode='extended')
         sy.config(command=self._tree.yview)
-        sx.config(command=self._tree.xview)
 
-        # 1행 헤더 = DB 컬럼명
+        # 가로 스크롤을 두 Treeview 동기화
+        def _sync_xscroll(*args):
+            self._tree.xview(*args)
+            self._header_tree.xview(*args)
+        sx.config(command=_sync_xscroll)
+        self._tree.configure(xscrollcommand=sx.set)
+
         for col_id, db_name, label, w in self._col_defs:
-            self._tree.heading(col_id, text=db_name)
+            self._tree.heading(col_id, text='')  # 데이터 Treeview 헤더는 숨김 (고정 헤더가 대체)
             self._tree.column(col_id, width=w, minwidth=40, stretch=True)
 
-        # 2행 = 한글 표시명 (고정 행으로 삽입, 선택/삭제 불가)
-        self._tree.tag_configure('header_row',
-                                  background=C['bg_surface'], foreground=C['text_accent'])
+        # 데이터 Treeview 네이티브 헤더 숨김
+        style = ttk.Style(root)
+        style.configure('NoHeader.Treeview.Heading', background=C['bg_deep'],
+                        foreground=C['bg_deep'], borderwidth=0, relief='flat')
+        style.layout('NoHeader.Treeview', style.layout('Treeview'))
+        # Treeview 헤더 높이를 0으로 만들 수 없으므로 show='tree headings' 대신 비움
+        self._tree.configure(show='')  # 헤더 완전 숨김
+
         self._tree.tag_configure('new', background=C['green_row'])
         self._tree.bind('<Double-1>', self._on_cell_double_click)
 
         sy.pack(side='right', fill='y')
-        sx.pack(side='bottom', fill='x')
         self._tree.pack(fill='both', expand=True)
+        sx.pack(fill='x')
 
         # ── 하단 버튼 바 ──
         bot = tk.Frame(root, bg=C['bg_surface'], height=50)
@@ -710,11 +740,6 @@ class ParseResultPopup:
         # Treeview
         self._tree.delete(*self._tree.get_children())
 
-        # 2행 헤더: 한글 표시명 고정 행
-        display_labels = tuple(d[2] for d in self._col_defs)
-        self._tree.insert('', 'end', iid='__header__', tags=('header_row',),
-                          values=display_labels)
-
         def _rec_to_values(rec):
             return tuple(_flat(rec.get(d[1], '')) for d in self._col_defs)
 
@@ -761,7 +786,7 @@ class ParseResultPopup:
     def _on_cell_double_click(self, event):
         item = self._tree.identify_row(event.y)
         col = self._tree.identify_column(event.x)
-        if not item or not col or item == '__header__':
+        if not item or not col:
             return
         col_idx = int(col.replace('#', '')) - 1
         col_name = self._col_defs[col_idx][2] if col_idx < len(self._col_defs) else ''
@@ -805,7 +830,7 @@ class ParseResultPopup:
 
     # ── 행 삭제 ──
     def _delete_selected(self):
-        selected = [s for s in self._tree.selection() if s != '__header__']
+        selected = list(self._tree.selection())
         if not selected:
             return
         db_ids, pending_keys = [], set()

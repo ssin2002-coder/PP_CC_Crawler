@@ -606,8 +606,62 @@ class ParseResultPopup:
             side='right', padx=12, pady=8)
         _dark_button(bot, '스킵', self._on_close).pack(
             side='right', pady=8)
-        _dark_button(bot, 'CSV 내보내기', self._open_csv_dialog, 'export').pack(
-            side='right', padx=(0, 12), pady=8)
+
+        # ── CSV 내보내기 패널 (하단 인라인) ──
+        csv_panel = tk.Frame(root, bg=C['bg_panel'],
+                             highlightbackground=C['border'], highlightthickness=1)
+        csv_panel.pack(fill='x', padx=8, pady=(0, 8))
+
+        csv_header = tk.Frame(csv_panel, bg=C['bg_surface'])
+        csv_header.pack(fill='x')
+        tk.Label(csv_header, text='CSV 내보내기', font=('맑은 고딕', 10, 'bold'),
+                 bg=C['bg_surface'], fg=C['text_accent'], padx=12, pady=6).pack(side='left')
+
+        csv_body = tk.Frame(csv_panel, bg=C['bg_panel'])
+        csv_body.pack(fill='x', padx=12, pady=8)
+
+        # 범위 선택
+        tk.Label(csv_body, text='범위', bg=C['bg_panel'], fg=C['text3'],
+                 font=('맑은 고딕', 9)).grid(row=0, column=0, sticky='w', pady=2)
+        self._csv_range_var = tk.StringVar(value='날짜 범위 지정')
+        range_combo = ttk.Combobox(csv_body, textvariable=self._csv_range_var,
+                                    values=['날짜 범위 지정', '전체 내보내기'],
+                                    state='readonly', width=16)
+        range_combo.grid(row=0, column=1, padx=(8, 16), pady=2, sticky='w')
+        range_combo.bind('<<ComboboxSelected>>', self._csv_on_range_change)
+
+        # 시작일
+        tk.Label(csv_body, text='시작일', bg=C['bg_panel'], fg=C['text3'],
+                 font=('맑은 고딕', 9)).grid(row=0, column=2, sticky='w', pady=2)
+        self._csv_start_var = tk.StringVar()
+        self._csv_start_entry = tk.Entry(csv_body, textvariable=self._csv_start_var,
+                 font=('맑은 고딕', 10), width=12,
+                 bg=C['bg_deep'], fg=C['text1'], insertbackground=C['text1'],
+                 highlightbackground=C['border'], highlightthickness=1, relief='flat')
+        self._csv_start_entry.grid(row=0, column=3, padx=(4, 16), pady=2)
+
+        # 종료일
+        tk.Label(csv_body, text='종료일', bg=C['bg_panel'], fg=C['text3'],
+                 font=('맑은 고딕', 9)).grid(row=0, column=4, sticky='w', pady=2)
+        self._csv_end_var = tk.StringVar()
+        self._csv_end_entry = tk.Entry(csv_body, textvariable=self._csv_end_var,
+                 font=('맑은 고딕', 10), width=12,
+                 bg=C['bg_deep'], fg=C['text1'], insertbackground=C['text1'],
+                 highlightbackground=C['border'], highlightthickness=1, relief='flat')
+        self._csv_end_entry.grid(row=0, column=5, padx=(4, 16), pady=2)
+
+        # 파일명 미리보기
+        self._csv_preview_var = tk.StringVar(value='...')
+        tk.Label(csv_body, textvariable=self._csv_preview_var,
+                 bg=C['bg_panel'], fg=C['green'], font=('Consolas', 10)
+                 ).grid(row=0, column=6, padx=(8, 16), sticky='w')
+
+        # 내보내기 버튼
+        _dark_button(csv_body, '내보내기', self._csv_export, 'export').grid(
+            row=0, column=7, padx=(0, 4), pady=2)
+
+        self._csv_start_var.trace_add('write', self._csv_update_preview)
+        self._csv_end_var.trace_add('write', self._csv_update_preview)
 
         # DB 이력 로드
         if self.db_path:
@@ -785,95 +839,41 @@ class ParseResultPopup:
                 pass
         self._refresh_tree()
 
-    def _open_csv_dialog(self):
-        if self._root:
-            CsvExportDialog(self._root, self.db_path)
+    def _csv_on_range_change(self, event=None):
+        is_all = self._csv_range_var.get() == '전체 내보내기'
+        state = 'disabled' if is_all else 'normal'
+        self._csv_start_entry.config(state=state)
+        self._csv_end_entry.config(state=state)
+        self._csv_update_preview()
+
+    def _csv_update_preview(self, *_):
+        if self._csv_range_var.get() == '전체 내보내기':
+            self._csv_preview_var.set('전체.csv')
+        else:
+            s = self._csv_start_var.get().replace('-', '_')
+            e = self._csv_end_var.get().replace('-', '_')
+            if s and e:
+                self._csv_preview_var.set(f'{s}_{e}.csv')
+            else:
+                self._csv_preview_var.set('...')
+
+    def _csv_export(self):
+        is_all = self._csv_range_var.get() == '전체 내보내기'
+        sd = None if is_all else (self._csv_start_var.get().strip() or None)
+        ed = None if is_all else (self._csv_end_var.get().strip() or None)
+        default = '전체.csv' if is_all else self._csv_preview_var.get()
+        path = filedialog.asksaveasfilename(parent=self._root, title='CSV 저장',
+            defaultextension='.csv', filetypes=[('CSV', '*.csv')], initialfile=default)
+        if not path:
+            return
+        count = export_csv(self.db_path, path, start_date=sd, end_date=ed)
+        messagebox.showinfo('완료', f'{count}건 내보내기 완료', parent=self._root)
 
     def _on_close(self):
         self._alive = False
         if self._root:
             self._root.destroy()
             self._root = None
-
-
-class CsvExportDialog:
-    def __init__(self, parent, db_path):
-        self.db_path = db_path
-        self.win = tk.Toplevel(parent)
-        self.win.title('CSV 내보내기')
-        self.win.geometry('400x280')
-        self.win.configure(bg=C['bg_panel'])
-        self.win.resizable(False, False)
-        self.win.grab_set()
-
-        tk.Label(self.win, text='CSV 내보내기', font=('맑은 고딕', 12, 'bold'),
-                 bg=C['bg_panel'], fg=C['text_accent']).pack(padx=16, pady=(16, 12), anchor='w')
-
-        # 범위
-        rf = tk.Frame(self.win, bg=C['bg_panel'])
-        rf.pack(fill='x', padx=16, pady=4)
-        tk.Label(rf, text='범위', bg=C['bg_panel'], fg=C['text3'],
-                 font=('맑은 고딕', 9)).pack(anchor='w')
-        self._range_var = tk.StringVar(value='날짜 범위 지정')
-        ttk.Combobox(rf, textvariable=self._range_var,
-                     values=['날짜 범위 지정', '전체 내보내기'],
-                     state='readonly', width=20).pack(fill='x', pady=(2, 0))
-
-        # 날짜
-        df = tk.Frame(self.win, bg=C['bg_panel'])
-        df.pack(fill='x', padx=16, pady=4)
-        for i, (lbl, var_name) in enumerate([('시작일', '_start_var'), ('종료일', '_end_var')]):
-            f = tk.Frame(df, bg=C['bg_panel'])
-            f.pack(side='left', expand=True, fill='x', padx=(0, 8) if i == 0 else 0)
-            tk.Label(f, text=lbl, bg=C['bg_panel'], fg=C['text3'],
-                     font=('맑은 고딕', 9)).pack(anchor='w')
-            sv = tk.StringVar()
-            setattr(self, var_name, sv)
-            e = tk.Entry(f, textvariable=sv, font=('맑은 고딕', 10),
-                         bg=C['bg_deep'], fg=C['text1'], insertbackground=C['text1'],
-                         highlightbackground=C['border'], highlightthickness=1, relief='flat')
-            e.pack(fill='x', pady=(2, 0))
-
-        # 미리보기
-        self._preview_var = tk.StringVar()
-        pf = tk.Frame(self.win, bg=C['bg_deep'], highlightbackground=C['border'], highlightthickness=1)
-        pf.pack(fill='x', padx=16, pady=8)
-        tk.Label(pf, textvariable=self._preview_var,
-                 bg=C['bg_deep'], fg=C['green'], font=('Consolas', 10),
-                 padx=8, pady=6).pack(fill='x')
-
-        self._start_var.trace_add('write', self._update_preview)
-        self._end_var.trace_add('write', self._update_preview)
-        self._update_preview()
-
-        # 버튼
-        bf = tk.Frame(self.win, bg=C['bg_panel'])
-        bf.pack(fill='x', padx=16, pady=(0, 12))
-        _dark_button(bf, '내보내기', self._export, 'export').pack(side='right')
-        _dark_button(bf, '취소', self.win.destroy).pack(side='right', padx=(0, 8))
-
-    def _update_preview(self, *_):
-        s = self._start_var.get().replace('-', '_')
-        e = self._end_var.get().replace('-', '_')
-        if self._range_var.get() == '전체 내보내기':
-            self._preview_var.set('전체.csv')
-        elif s and e:
-            self._preview_var.set(f'{s}_{e}.csv')
-        else:
-            self._preview_var.set('...')
-
-    def _export(self):
-        is_all = self._range_var.get() == '전체 내보내기'
-        sd = None if is_all else (self._start_var.get().strip() or None)
-        ed = None if is_all else (self._end_var.get().strip() or None)
-        default = '전체.csv' if is_all else self._preview_var.get()
-        path = filedialog.asksaveasfilename(parent=self.win, title='CSV 저장',
-            defaultextension='.csv', filetypes=[('CSV', '*.csv')], initialfile=default)
-        if not path:
-            return
-        count = export_csv(self.db_path, path, start_date=sd, end_date=ed)
-        messagebox.showinfo('완료', f'{count}건 내보내기 완료', parent=self.win)
-        self.win.destroy()
 
 
 def ask_date_input(doc_name):

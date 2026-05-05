@@ -3,7 +3,7 @@ import pytest
 from word_crawler import (
     clean_cell_text, split_items, extract_date_from_text,
     extract_date_from_filename, find_main_table_index, parse_table_data,
-    parse_item_block,
+    parse_item_block, format_multiline,
 )
 
 
@@ -111,6 +111,27 @@ class TestFindMainTable:
 
     def test_empty(self):
         assert find_main_table_index([]) is None
+
+
+class TestFormatMultiline:
+    def test_joins_with_pipe(self):
+        assert format_multiline('a\nb\nc') == 'a | b | c'
+
+    def test_collapses_blank_lines(self):
+        assert format_multiline('a\n\n\nb') == 'a | b'
+
+    def test_strips_each_line(self):
+        assert format_multiline('  a  \n   b ') == 'a | b'
+
+    def test_normalizes_crlf(self):
+        assert format_multiline('a\r\nb\rc') == 'a | b | c'
+
+    def test_empty(self):
+        assert format_multiline('') == ''
+        assert format_multiline(None) == ''
+
+    def test_custom_sep(self):
+        assert format_multiline('a\nb', sep=' / ') == 'a / b'
 
 
 class TestParseItemBlock:

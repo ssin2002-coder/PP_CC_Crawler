@@ -211,11 +211,16 @@ def export_csv(db_path, output_path, start_date=None, end_date=None):
         conn.close()
         return 0
     keys = rows[0].keys()
+    multiline_cols = {'title', 'raw_text', 'raw_cell'}
     with open(output_path, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=keys)
         writer.writeheader()
         for row in rows:
-            writer.writerow(dict(row))
+            d = dict(row)
+            for k in multiline_cols:
+                if k in d and d[k]:
+                    d[k] = format_multiline(d[k])
+            writer.writerow(d)
     # 내보낸 레코드에 exported_at 기록
     ids = [row['id'] for row in rows]
     placeholders = ','.join('?' for _ in ids)
@@ -328,6 +333,17 @@ def extract_date_from_filename(filename):
 
 
 REQUIRED_HEADERS = ('구분', 'UT동', '확산동', '전달사항')
+
+
+def format_multiline(text, sep=' | '):
+    """여러 줄 텍스트를 단일 줄 + 명시 구분자로 변환. 뷰어/CSV 출력에서
+    개행 구조가 사라지지 않도록 라인 사이에 ` | ` 같은 마커를 끼워 넣는다.
+    빈 줄은 제거한다."""
+    if not text:
+        return ''
+    s = str(text).replace('\r\n', '\n').replace('\r', '\n')
+    lines = [line.strip() for line in s.split('\n') if line.strip()]
+    return sep.join(lines)
 
 
 def find_main_table_index(headers_list):
@@ -475,10 +491,8 @@ class WordWatcher:
             return None
         table = doc.Tables(table_idx + 1)
         headers = headers_list[table_idx]
-        date_str = None
-        table_range = table.Range
-        doc_text_before = doc.Range(0, table_range.Start).Text
-        date_str = extract_date_from_text(doc_text_before)
+        # 본문 + 텍스트 박스(Shape) + 헤더/푸터 텍스트를 모아서 날짜 검색
+        date_str = extract_date_from_text(self._collect_text_for_date(doc, table))
         if date_str is None:
             date_str = extract_date_from_filename(doc.Name)
         if date_str is None:
@@ -495,6 +509,57 @@ class WordWatcher:
         records = parse_table_data(headers, rows_data, date_str, doc.Name)
         return (records, date_str) if records else None
 
+    @staticmethod
+    def _collect_text_for_date(doc, table):
+        """날짜 추출용 텍스트 묶음. 표 위 본문 + 모든 Shape(텍스트 박스) +
+        헤더/푸터 텍스트를 합쳐 반환. 일부 양식은 날짜를 본문 텍스트가 아닌
+        텍스트 박스에 그려두기 때문에 Shapes 까지 훑어야 함."""
+        parts = []
+        # 본문에서 표 위쪽 텍스트
+        try:
+            parts.append(doc.Range(0, table.Range.Start).Text)
+        except Exception:
+            pass
+        # 떠 있는 Shape (텍스트 박스 포함)
+        try:
+            for i in range(1, doc.Shapes.Count + 1):
+                try:
+                    shape = doc.Shapes(i)
+                    tf = shape.TextFrame
+                    if tf.HasText:
+                        parts.append(tf.TextRange.Text)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        # 인라인 Shape (드물게 텍스트 박스가 인라인일 수 있음)
+        try:
+            for i in range(1, doc.InlineShapes.Count + 1):
+                try:
+                    ish = doc.InlineShapes(i)
+                    tr = ish.Range
+                    parts.append(tr.Text)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        # 섹션별 헤더/푸터
+        try:
+            for s in range(1, doc.Sections.Count + 1):
+                section = doc.Sections(s)
+                for hf in (section.Headers, section.Footers):
+                    try:
+                        for j in range(1, hf.Count + 1):
+                            try:
+                                parts.append(hf(j).Range.Text)
+                            except Exception:
+                                continue
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        return '\n'.join(p for p in parts if p)
+
     def reset_seen(self):
         self._seen_docs.clear()
 
@@ -503,9 +568,10 @@ class WordWatcher:
 # ─────────────────────────────────────────────
 
 def _flat(text):
+    """뷰어용 단일 라인 변환. 멀티라인은 ` | ` 구분자로 합친다."""
     if not text:
         return ''
-    return ' '.join(str(text).replace('\r', ' ').replace('\n', ' ').split())
+    return format_multiline(str(text))
 
 
 def _apply_dark_theme(root):

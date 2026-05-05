@@ -146,6 +146,21 @@ class TestExportCsv:
             rows = list(reader)
             assert len(rows) == 2
 
+    def test_export_collapses_newlines_in_multiline_cols(self, db_path, tmp_path):
+        rec = _make_record(raw_text='- 베어링 발주\n- 임시조치')
+        rec['raw_cell'] = '*AHU\n - 베어링 발주\n\n - 임시조치'
+        insert_records(db_path, [rec], content_hash='abc')
+        out = str(tmp_path / "out.csv")
+        export_csv(db_path, out)
+        with open(out, encoding='utf-8-sig') as f:
+            reader = csv.DictReader(f)
+            row = next(reader)
+        # CSV 셀 안에 raw \n 이 남아있지 않고 ` | ` 구분자로 변환되어야 함
+        assert '\n' not in row['raw_text']
+        assert ' | ' in row['raw_text']
+        assert '\n' not in row['raw_cell']
+        assert ' | ' in row['raw_cell']
+
     def test_export_date_range(self, db_path, tmp_path):
         insert_records(db_path, [
             _make_record(date='2024-04-01', raw_text='항목1'),

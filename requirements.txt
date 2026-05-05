@@ -1,0 +1,10 @@
+flask==3.1.1
+flask-socketio==5.5.1
+flask-cors==5.0.1
+python-socketio==5.12.1
+python-engineio==4.11.2
+# eventlet 제거 — COM subprocess와 충돌
+pandas==2.2.3
+scipy==1.15.3
+pywin32==308
+xlwings==0.33.8

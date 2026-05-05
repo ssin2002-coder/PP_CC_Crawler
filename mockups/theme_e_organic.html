@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>Excel Validator — Organic</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;0,9..144,700;1,9..144,400;1,9..144,600&family=Nunito:wght@300;400;500;600;700&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --forest: #1a2e1a;
+  --forest2: #203520;
+  --forest3: #2a4230;
+  --sage: #8fbc8f;
+  --sage-light: rgba(143,188,143,0.15);
+  --sage-mid: rgba(143,188,143,0.3);
+  --cream: #faf3e0;
+  --cream2: #f5ecd2;
+  --cream3: #ede3c8;
+  --amber: #d4943a;
+  --amber-light: rgba(212,148,58,0.15);
+  --red: #c0392b;
+  --red-light: rgba(192,57,43,0.12);
+  --red-mid: rgba(192,57,43,0.25);
+  --moss: #5a7a5a;
+  --moss-light: rgba(90,122,90,0.2);
+  --bark: #6b4c2a;
+  --white-sage: #f0f5ef;
+  --ink: #1e2a1e;
+  --ink2: #3d5c3d;
+  --ink3: #6b8c6b;
+  --muted: rgba(30,42,30,0.5);
+  --border: rgba(143,188,143,0.3);
+  --border2: rgba(143,188,143,0.5);
+  --serif: 'Fraunces', Georgia, serif;
+  --body: 'Nunito', sans-serif;
+}
+
+html, body {
+  width: 1440px;
+  height: 900px;
+  overflow: hidden;
+  background: var(--forest);
+  color: var(--cream);
+  font-family: var(--body);
+  font-size: 13px;
+}
+
+/* Organic SVG-style background blobs */
+body::before {
+  content: '';
+  position: fixed;
+  width: 700px; height: 700px;
+  background: radial-gradient(ellipse at 30% 40%, rgba(143,188,143,0.08) 0%, transparent 60%);
+  top: -200px; left: -200px;
+  pointer-events: none;
+  border-radius: 50%;
+  animation: breathe 8s ease-in-out infinite alternate;
+}
+body::after {
+  content: '';
+  position: fixed;
+  width: 500px; height: 500px;
+  background: radial-gradient(ellipse, rgba(90,122,90,0.1) 0%, transparent 60%);
+  bottom: -100px; right: -100px;
+  pointer-events: none;
+  border-radius: 40% 60% 50% 70%;
+  animation: breathe 10s ease-in-out infinite alternate-reverse;
+}
+@keyframes breathe {
+  from { transform: scale(1) rotate(0deg); opacity: 0.7; }
+  to { transform: scale(1.08) rotate(3deg); opacity: 1; }
+}
+
+/* TOP BAR */
+.topbar {
+  height: 58px;
+  display: flex;
+  align-items: center;
+  padding: 0 28px;
+  gap: 20px;
+  background: rgba(26,46,26,0.7);
+  border-bottom: 1px solid var(--border);
+  backdrop-filter: blur(20px);
+  position: relative;
+  z-index: 100;
+}
+/* Wavy bottom border for topbar */
+.topbar::after {
+  content: '';
+  position: absolute;
+  bottom: -8px;
+  left: 0; right: 0;
+  height: 8px;
+  background: var(--forest);
+  clip-path: polygon(0 0, 2% 100%, 4% 0, 6% 100%, 8% 0, 10% 100%, 12% 0, 14% 100%, 16% 0, 18% 100%, 20% 0, 22% 100%, 24% 0, 26% 100%, 28% 0, 30% 100%, 32% 0, 34% 100%, 36% 0, 38% 100%, 40% 0, 42% 100%, 44% 0, 46% 100%, 48% 0, 50% 100%, 52% 0, 54% 100%, 56% 0, 58% 100%, 60% 0, 62% 100%, 64% 0, 66% 100%, 68% 0, 70% 100%, 72% 0, 74% 100%, 76% 0, 78% 100%, 80% 0, 82% 100%, 84% 0, 86% 100%, 88% 0, 90% 100%, 92% 0, 94% 100%, 96% 0, 98% 100%, 100% 0, 100% 100%, 0 100%);
+  pointer-events: none;
+  z-index: 200;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.brand-leaf {
+  width: 36px;
+  height: 36px;
+  background: linear-gradient(135deg, var(--sage), #6aaa6a);
+  border-radius: 50% 20% 50% 20%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--forest);
+  transform: rotate(-15deg);
+  box-shadow: 0 4px 16px rgba(143,188,143,0.3);
+  animation: leaf-sway 4s ease-in-out infinite alternate;
+}
+@keyframes leaf-sway {
+  from { transform: rotate(-15deg); }
+  to { transform: rotate(-10deg) scale(1.03); }
+}
+.brand-name {
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--sage);
+  letter-spacing: -0.02em;
+}
+.brand-name em {
+  font-style: normal;
+  color: var(--cream);
+}
+.topbar-sep { width: 1px; height: 28px; background: var(--border); }
+.file-sprig {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--body);
+  font-size: 13px;
+  color: var(--sage);
+  background: var(--sage-light);
+  border: 1px solid var(--border);
+  border-radius: 20px 6px 20px 6px;
+  padding: 5px 14px;
+}
+.badges { display: flex; gap: 8px; margin-left: auto; }
+.badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--body);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 5px 14px;
+  border-radius: 16px 4px 16px 4px;
+}
+.badge-err {
+  background: var(--red-light);
+  border: 1px solid var(--red-mid);
+  color: #e8756b;
+}
+.badge-warn {
+  background: var(--amber-light);
+  border: 1px solid rgba(212,148,58,0.3);
+  color: var(--amber);
+}
+.badge-dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.actions { display: flex; gap: 8px; }
+.btn {
+  font-family: var(--body);
+  font-size: 13px;
+  font-weight: 600;
+  padding: 7px 18px;
+  border-radius: 12px 4px 12px 4px;
+  border: 1px solid var(--border);
+  background: var(--sage-light);
+  color: var(--sage);
+  cursor: pointer;
+  transition: all 0.25s;
+}
+.btn:hover { background: var(--sage-mid); color: var(--cream); border-color: var(--sage); }
+.btn-primary {
+  background: linear-gradient(135deg, var(--moss), #3d6b3d);
+  border-color: var(--sage);
+  color: var(--cream);
+  box-shadow: 0 4px 16px rgba(90,122,90,0.3);
+}
+.btn-primary:hover { box-shadow: 0 6px 24px rgba(90,122,90,0.5); transform: translateY(-1px); }
+
+/* MAIN LAYOUT */
+.layout {
+  display: flex;
+  height: calc(900px - 58px);
+  margin-top: 8px;
+  padding: 0 16px 16px;
+  gap: 16px;
+  position: relative;
+  z-index: 1;
+}
+
+/* SIDEBAR — breathing organic panels */
+.sidebar {
+  width: 252px;
+  min-width: 252px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  animation: sidebar-breathe 6s ease-in-out infinite alternate;
+}
+@keyframes sidebar-breathe {
+  from { transform: translateX(0); }
+  to { transform: translateX(1px); }
+}
+
+.stat-pod {
+  background: rgba(26,46,26,0.7);
+  border: 1px solid var(--border);
+  border-radius: 20px 8px 20px 8px;
+  backdrop-filter: blur(20px);
+  padding: 16px 18px;
+  animation: breathe 8s ease-in-out infinite alternate;
+}
+.pod-label {
+  font-family: var(--serif);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--sage);
+  letter-spacing: 0.08em;
+  margin-bottom: 12px;
+  opacity: 0.8;
+}
+.pod-stats { display: flex; gap: 16px; justify-content: space-between; }
+.pod-stat { text-align: center; }
+.pod-num {
+  font-family: var(--serif);
+  font-size: 26px;
+  font-weight: 700;
+  line-height: 1;
+  display: block;
+}
+.pod-num.err { color: #e8756b; }
+.pod-num.warn { color: var(--amber); }
+.pod-num.ok { color: var(--sage); }
+.pod-sublabel {
+  font-family: var(--body);
+  font-size: 10px;
+  color: var(--ink3);
+  color: var(--sage);
+  opacity: 0.7;
+  margin-top: 2px;
+  display: block;
+}
+.pod-time { font-size: 10px; color: var(--sage); opacity: 0.5; margin-top: 8px; font-style: italic; }
+
+/* Seed pod rule cards */
+.rules-pod {
+  flex: 1;
+  background: rgba(26,46,26,0.7);
+  border: 1px solid var(--border);
+  border-radius: 20px 8px 20px 8px;
+  backdrop-filter: blur(20px);
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.rules-pod-label {
+  font-family: var(--serif);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sage);
+  margin-bottom: 12px;
+  opacity: 0.9;
+}
+.seeds { display: flex; flex-direction: column; gap: 8px; overflow-y: auto; flex: 1; }
+.seeds::-webkit-scrollbar { width: 3px; }
+.seeds::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+
+.seed {
+  background: rgba(143,188,143,0.05);
+  border: 1px solid var(--border);
+  border-radius: 12px 4px 12px 4px;
+  padding: 10px 14px;
+  cursor: pointer;
+  transition: all 0.25s;
+  position: relative;
+  overflow: hidden;
+}
+.seed::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 3px;
+  border-radius: 2px 0 0 2px;
+}
+.seed.err::before { background: #e8756b; }
+.seed.warn::before { background: var(--amber); }
+.seed.ok::before { background: var(--sage); }
+.seed:hover { background: rgba(143,188,143,0.1); transform: translateX(3px); }
+.seed-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+.seed-name { font-family: var(--body); font-size: 13px; font-weight: 600; color: var(--cream); flex: 1; }
+/* Organic toggle */
+.toggle-leaf {
+  width: 32px;
+  height: 18px;
+  border-radius: 9px 3px 9px 3px;
+  background: linear-gradient(135deg, var(--moss), #3d6b3d);
+  position: relative;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(90,122,90,0.3);
+  flex-shrink: 0;
+}
+.toggle-leaf::after {
+  content: '';
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 7px 2px 7px 2px;
+  background: var(--cream);
+}
+.seed-bottom { display: flex; align-items: center; justify-content: space-between; }
+.seed-stat { font-family: var(--body); font-size: 11px; }
+.seed-stat.err { color: #e8756b; }
+.seed-stat.warn { color: var(--amber); }
+.seed-stat.ok { color: var(--sage); }
+.seed-tag {
+  font-family: var(--body);
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 6px 2px 6px 2px;
+}
+.seed-tag.err { background: var(--red-light); color: #e8756b; border: 1px solid var(--red-mid); }
+.seed-tag.warn { background: var(--amber-light); color: var(--amber); border: 1px solid rgba(212,148,58,0.3); }
+.seed-tag.ok { background: var(--sage-light); color: var(--sage); border: 1px solid var(--border); }
+
+/* CENTER PANEL */
+.center-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+
+/* Data grid panel — warm cream "paper" */
+.grid-panel {
+  flex: 1;
+  background: var(--cream);
+  border-radius: 16px 4px 16px 4px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.5);
+  /* Rough paper edge simulation */
+  border: 1px solid rgba(210,194,158,0.6);
+}
+.grid-header {
+  display: flex;
+  align-items: center;
+  padding: 12px 18px;
+  background: var(--cream2);
+  border-bottom: 1px solid var(--cream3);
+  gap: 12px;
+}
+.grid-title {
+  font-family: var(--serif);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.grid-meta { font-family: var(--body); font-size: 11px; color: var(--bark); margin-left: auto; font-style: italic; }
+
+.grid-wrapper { flex: 1; overflow: auto; }
+.grid-wrapper::-webkit-scrollbar { width: 6px; height: 6px; }
+.grid-wrapper::-webkit-scrollbar-track { background: var(--cream2); }
+.grid-wrapper::-webkit-scrollbar-thumb { background: var(--cream3); border-radius: 3px; }
+
+.data-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--body);
+  font-size: 12.5px;
+  color: var(--ink);
+}
+.data-grid th, .data-grid td {
+  border: 1px solid rgba(180,165,140,0.4);
+  padding: 0;
+}
+.col-num {
+  width: 32px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--bark);
+  background: var(--cream2) !important;
+  padding: 5px 4px;
+  opacity: 0.7;
+}
+.th-col {
+  background: var(--cream3) !important;
+  color: var(--bark);
+  font-size: 10px;
+  font-weight: 700;
+  text-align: center;
+  padding: 6px 10px;
+  letter-spacing: 0.08em;
+  font-family: var(--body);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.cell { padding: 6px 12px; background: var(--cream); color: var(--ink2); }
+.cell-num { text-align: right; }
+.cell-center { text-align: center; }
+.alt { background: rgba(245,236,210,0.6) !important; }
+.cell-merged {
+  text-align: center;
+  font-family: var(--serif);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--ink);
+  padding: 12px;
+  background: var(--cream2) !important;
+  border-bottom: 2px solid var(--cream3) !important;
+}
+.cell-meta {
+  background: var(--cream2) !important;
+  color: var(--bark);
+  font-size: 11px;
+  font-style: italic;
+}
+.cell-hdr {
+  background: var(--cream3) !important;
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--ink);
+  border-bottom: 2px solid rgba(180,165,140,0.6) !important;
+  font-family: var(--body);
+}
+.cell-subtotal {
+  background: var(--cream2) !important;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+/* Wilting error style — thorny red border */
+.cell-error {
+  background: rgba(192,57,43,0.06) !important;
+  color: var(--red) !important;
+  font-weight: 700;
+  border-color: rgba(192,57,43,0.4) !important;
+  box-shadow: inset 0 0 0 1px rgba(192,57,43,0.3);
+  position: relative;
+}
+.cell-error::after {
+  content: '✕';
+  font-size: 10px;
+  margin-left: 4px;
+  color: var(--red);
+}
+
+/* Autumn leaf warning style */
+.cell-warn {
+  background: rgba(212,148,58,0.08) !important;
+  color: var(--amber) !important;
+  font-weight: 600;
+  border-color: rgba(212,148,58,0.4) !important;
+}
+.cell-dup {
+  background: rgba(212,148,58,0.04) !important;
+  color: var(--bark);
+  text-decoration: underline dotted rgba(212,148,58,0.6);
+}
+
+/* BOTTOM PANEL — organic issue list */
+.bottom-panel {
+  height: 196px;
+  background: rgba(26,46,26,0.75);
+  border: 1px solid var(--border);
+  border-radius: 12px 4px 12px 4px;
+  backdrop-filter: blur(20px);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.bottom-header {
+  display: flex;
+  align-items: center;
+  padding: 10px 18px;
+  border-bottom: 1px solid var(--border);
+  gap: 10px;
+}
+.bottom-title {
+  font-family: var(--serif);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sage);
+}
+.sprig-pill {
+  font-family: var(--body);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 12px;
+  border-radius: 10px 3px 10px 3px;
+}
+.sprig-err { background: var(--red-light); color: #e8756b; border: 1px solid var(--red-mid); }
+.sprig-warn { background: var(--amber-light); color: var(--amber); border: 1px solid rgba(212,148,58,0.3); }
+.hint { margin-left: auto; font-size: 11px; color: var(--sage); opacity: 0.5; font-style: italic; }
+.issue-list { flex: 1; overflow-y: auto; }
+.issue-list::-webkit-scrollbar { width: 3px; }
+.issue-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 2px; }
+.issue-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 18px;
+  border-bottom: 1px solid rgba(143,188,143,0.1);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.issue-row:hover { background: rgba(143,188,143,0.05); }
+.issue-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 13px 4px 13px 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.icon-err { background: var(--red-light); border: 1px solid var(--red-mid); }
+.icon-warn { background: var(--amber-light); border: 1px solid rgba(212,148,58,0.3); }
+.issue-cell-ref {
+  font-family: var(--body);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--sage);
+  background: var(--sage-light);
+  border: 1px solid var(--border);
+  border-radius: 6px 2px 6px 2px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+.issue-desc { font-family: var(--body); font-size: 12px; color: var(--sage); opacity: 0.8; flex: 1; }
+.issue-desc strong { color: var(--cream); opacity: 1; font-weight: 700; }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-leaf">EV</div>
+    <span class="brand-name">Excel <em>Validator</em></span>
+  </div>
+  <div class="topbar-sep"></div>
+  <div class="file-sprig">
+    🌿 sample_settlement.xlsx
+  </div>
+  <div class="badges">
+    <div class="badge badge-err"><span class="badge-dot"></span> 2 오류</div>
+    <div class="badge badge-warn"><span class="badge-dot"></span> 3 경고</div>
+  </div>
+  <div class="actions">
+    <button class="btn">재파싱</button>
+    <button class="btn">내보내기</button>
+    <button class="btn btn-primary">보고서 생성</button>
+  </div>
+</div>
+
+<!-- MAIN LAYOUT -->
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+
+    <!-- Stats pod -->
+    <div class="stat-pod">
+      <div class="pod-label">검증 현황</div>
+      <div class="pod-stats">
+        <div class="pod-stat">
+          <span class="pod-num err">2</span>
+          <span class="pod-sublabel">오류</span>
+        </div>
+        <div class="pod-stat">
+          <span class="pod-num warn">3</span>
+          <span class="pod-sublabel">경고</span>
+        </div>
+        <div class="pod-stat">
+          <span class="pod-num ok">1</span>
+          <span class="pod-sublabel">통과</span>
+        </div>
+      </div>
+      <div class="pod-time">마지막 스캔: 2026-05-05 09:42</div>
+    </div>
+
+    <!-- Seed pod rules -->
+    <div class="rules-pod">
+      <div class="rules-pod-label">검증 규칙 (씨앗)</div>
+      <div class="seeds">
+
+        <div class="seed err">
+          <div class="seed-top">
+            <span class="seed-name">자재비 합계 검증</span>
+            <div class="toggle-leaf"></div>
+          </div>
+          <div class="seed-bottom">
+            <span class="seed-stat err">🌹 1건 적발</span>
+            <span class="seed-tag err">오류</span>
+          </div>
+        </div>
+
+        <div class="seed err">
+          <div class="seed-top">
+            <span class="seed-name">인건비 합계 검증</span>
+            <div class="toggle-leaf"></div>
+          </div>
+          <div class="seed-bottom">
+            <span class="seed-stat err">🌹 1건 적발</span>
+            <span class="seed-tag err">오류</span>
+          </div>
+        </div>
+
+        <div class="seed warn">
+          <div class="seed-top">
+            <span class="seed-name">단가 이상치 (3σ)</span>
+            <div class="toggle-leaf"></div>
+          </div>
+          <div class="seed-bottom">
+            <span class="seed-stat warn">🍂 1건 적발</span>
+            <span class="seed-tag warn">경고</span>
+          </div>
+        </div>
+
+        <div class="seed warn">
+          <div class="seed-top">
+            <span class="seed-name">중복 항목 검출</span>
+            <div class="toggle-leaf"></div>
+          </div>
+          <div class="seed-bottom">
+            <span class="seed-stat warn">🍂 1건 적발</span>
+            <span class="seed-tag warn">경고</span>
+          </div>
+        </div>
+
+        <div class="seed ok">
+          <div class="seed-top">
+            <span class="seed-name">필수 항목 누락</span>
+            <div class="toggle-leaf"></div>
+          </div>
+          <div class="seed-bottom">
+            <span class="seed-stat ok">🌱 0건 적발</span>
+            <span class="seed-tag ok">통과</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER -->
+  <div class="center-panel">
+
+    <!-- Data grid — cream paper -->
+    <div class="grid-panel">
+      <div class="grid-header">
+        <span class="grid-title">정산 데이터</span>
+        <div style="display:flex;gap:8px;">
+          <span style="font-size:11px;color:var(--bark);background:var(--cream2);border-radius:6px 2px 6px 2px;padding:2px 8px;border:1px solid var(--cream3);">42행</span>
+          <span style="font-size:11px;color:var(--bark);background:var(--cream2);border-radius:6px 2px 6px 2px;padding:2px 8px;border:1px solid var(--cream3);">7열</span>
+        </div>
+        <span class="grid-meta">정산서_2026_05 · 붉은 셀 = 오류 · 황금 테두리 = 경고</span>
+      </div>
+      <div class="grid-wrapper">
+        <table class="data-grid">
+          <thead>
+            <tr>
+              <th class="col-num th-col">#</th>
+              <th class="th-col">A</th>
+              <th class="th-col">B</th>
+              <th class="th-col">C</th>
+              <th class="th-col">D</th>
+              <th class="th-col">E</th>
+              <th class="th-col">F</th>
+              <th class="th-col">G</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="col-num">1</td>
+              <td colspan="7" class="cell cell-merged">정비 비용정산서 (2026년 5월)</td>
+            </tr>
+            <tr>
+              <td class="col-num">2</td>
+              <td colspan="3" class="cell cell-meta">정산일: 2026-05-03</td>
+              <td colspan="4" class="cell cell-meta">부서: 인프라팀</td>
+            </tr>
+            <tr>
+              <td class="col-num">3</td>
+              <td colspan="4" class="cell cell-meta">설비: CH-001 Chiller #1</td>
+              <td colspan="3" class="cell cell-meta">정비유형: 사후정비</td>
+            </tr>
+            <tr>
+              <td class="col-num">4</td>
+              <td colspan="7" class="cell" style="height:10px;background:var(--cream2);"></td>
+            </tr>
+            <tr>
+              <td class="col-num">5</td>
+              <td class="cell cell-hdr">No.</td>
+              <td class="cell cell-hdr">자재명</td>
+              <td class="cell cell-hdr">규격/사양</td>
+              <td class="cell cell-hdr">수량</td>
+              <td class="cell cell-hdr cell-num">단가(원)</td>
+              <td class="cell cell-hdr cell-num">금액(원)</td>
+              <td class="cell cell-hdr">비고</td>
+            </tr>
+            <tr>
+              <td class="col-num">6</td>
+              <td class="cell cell-center alt">1</td>
+              <td class="cell alt">베어링 6205</td>
+              <td class="cell alt">NSK</td>
+              <td class="cell cell-num alt">4</td>
+              <td class="cell cell-num alt">15,000</td>
+              <td class="cell cell-num alt">60,000</td>
+              <td class="cell alt">정기교체</td>
+            </tr>
+            <tr>
+              <td class="col-num">7</td>
+              <td class="cell cell-center">2</td>
+              <td class="cell">V벨트 B-52</td>
+              <td class="cell">반도</td>
+              <td class="cell cell-num">2</td>
+              <td class="cell cell-num">8,500</td>
+              <td class="cell cell-num">17,000</td>
+              <td class="cell"></td>
+            </tr>
+            <tr>
+              <td class="col-num">8</td>
+              <td class="cell cell-center alt">3</td>
+              <td class="cell alt">윤활유 10L</td>
+              <td class="cell alt">SK ZIC</td>
+              <td class="cell cell-num alt">1</td>
+              <td class="cell cell-num cell-warn alt">350,000 🍂</td>
+              <td class="cell cell-num alt">350,000</td>
+              <td class="cell cell-warn alt">단가확인</td>
+            </tr>
+            <tr>
+              <td class="col-num">9</td>
+              <td class="cell cell-center cell-dup">4</td>
+              <td class="cell cell-dup">베어링 6205</td>
+              <td class="cell cell-dup">NSK</td>
+              <td class="cell cell-num cell-dup">4</td>
+              <td class="cell cell-num cell-dup">15,000</td>
+              <td class="cell cell-num cell-dup">60,000</td>
+              <td class="cell cell-dup">추가요청 🍂</td>
+            </tr>
+            <tr>
+              <td class="col-num">10</td>
+              <td colspan="5" class="cell cell-subtotal alt">소계</td>
+              <td class="cell cell-num cell-error alt">400,000</td>
+              <td class="cell cell-subtotal alt"></td>
+            </tr>
+            <tr>
+              <td class="col-num">11</td>
+              <td colspan="7" class="cell" style="height:10px;background:var(--cream2);"></td>
+            </tr>
+            <tr>
+              <td class="col-num">12</td>
+              <td colspan="7" class="cell cell-hdr" style="color:var(--bark);font-size:11px;border-bottom:1px solid rgba(180,165,140,0.4)!important;">인건비 명세</td>
+            </tr>
+            <tr>
+              <td class="col-num">13</td>
+              <td class="cell cell-hdr">구분</td>
+              <td class="cell cell-hdr">성명</td>
+              <td class="cell cell-hdr">직급</td>
+              <td class="cell cell-hdr">작업시간</td>
+              <td class="cell cell-hdr cell-num">단가(원/h)</td>
+              <td class="cell cell-hdr cell-num">금액(원)</td>
+              <td class="cell cell-hdr">비고</td>
+            </tr>
+            <tr>
+              <td class="col-num">14</td>
+              <td class="cell alt">일반정비</td>
+              <td class="cell alt">박기사</td>
+              <td class="cell alt">기사</td>
+              <td class="cell cell-num cell-warn alt">26h 🍂</td>
+              <td class="cell cell-num alt">55,000</td>
+              <td class="cell cell-num alt">1,430,000</td>
+              <td class="cell cell-warn alt">시간초과</td>
+            </tr>
+            <tr>
+              <td class="col-num">15</td>
+              <td class="cell">전기점검</td>
+              <td class="cell">김전기</td>
+              <td class="cell">기술사</td>
+              <td class="cell cell-num">20h</td>
+              <td class="cell cell-num">110,000</td>
+              <td class="cell cell-num">2,200,000</td>
+              <td class="cell"></td>
+            </tr>
+            <tr>
+              <td class="col-num">16</td>
+              <td colspan="5" class="cell cell-subtotal alt">소계</td>
+              <td class="cell cell-num cell-error alt">3,200,000</td>
+              <td class="cell cell-subtotal alt"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Bottom issues panel -->
+    <div class="bottom-panel">
+      <div class="bottom-header">
+        <span class="bottom-title">발견된 이슈</span>
+        <span class="sprig-pill sprig-err">🌹 오류 2</span>
+        <span class="sprig-pill sprig-warn">🍂 경고 3</span>
+        <span class="hint">클릭시 해당 셀로 이동</span>
+      </div>
+      <div class="issue-list">
+        <div class="issue-row">
+          <div class="issue-icon icon-err">🌹</div>
+          <span class="issue-cell-ref">F10</span>
+          <span class="issue-desc">자재비 합계 불일치 — 표시값 <strong>400,000</strong> ≠ 계산값 <strong>487,000</strong> (차이: 87,000원)</span>
+        </div>
+        <div class="issue-row">
+          <div class="issue-icon icon-err">🌹</div>
+          <span class="issue-cell-ref">F20</span>
+          <span class="issue-desc">인건비 합계 불일치 — 표시값 <strong>3,200,000</strong> ≠ 계산값 <strong>3,630,000</strong> (차이: 430,000원)</span>
+        </div>
+        <div class="issue-row">
+          <div class="issue-icon icon-warn">🍂</div>
+          <span class="issue-cell-ref">E8</span>
+          <span class="issue-desc">단가 이상치 — 윤활유 <strong>350,000원</strong> (평균 112,000 대비 <strong>312%</strong>)</span>
+        </div>
+        <div class="issue-row">
+          <div class="issue-icon icon-warn">🍂</div>
+          <span class="issue-cell-ref">A9</span>
+          <span class="issue-desc">중복 항목 — 베어링 6205 동일 수량/금액 <strong>2회 청구</strong></span>
+        </div>
+        <div class="issue-row">
+          <div class="issue-icon icon-warn">🍂</div>
+          <span class="issue-cell-ref">D14</span>
+          <span class="issue-desc">근무시간 초과 — 박기사 <strong>26h</strong> (24h 한도 초과)</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

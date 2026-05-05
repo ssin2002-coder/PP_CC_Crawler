@@ -1,0 +1,1017 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>Excel Validator — Industrial SCADA</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;500;600;700;800&family=Barlow:wght@300;400;500;600&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --gunmetal: #1a1d23;
+  --panel: #21252d;
+  --panel2: #292e38;
+  --panel3: #2f3542;
+  --plate: #181b21;
+  --yellow: #ffd100;
+  --yellow-dim: #998000;
+  --orange: #ff8c00;
+  --red: #ff2d2d;
+  --red-dim: #8b0000;
+  --green: #00e676;
+  --green-dim: #005f30;
+  --white: #e4e8f0;
+  --grey: #8a9ab0;
+  --grey2: #5a6478;
+  --border: #363c4a;
+  --border2: #4a5268;
+  --cond: 'Barlow Condensed', sans-serif;
+  --body: 'Barlow', sans-serif;
+}
+
+html, body {
+  width: 1440px;
+  height: 900px;
+  overflow: hidden;
+  background: var(--gunmetal);
+  color: var(--white);
+  font-family: var(--body);
+  font-size: 13px;
+}
+
+/* Subtle metal texture */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0,0,0,0.04) 2px,
+    rgba(0,0,0,0.04) 4px
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* SYSTEM HEADER */
+.sysbar {
+  height: 22px;
+  background: var(--plate);
+  border-bottom: 2px solid var(--yellow);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 24px;
+  position: relative;
+  z-index: 100;
+}
+.sysbar-id {
+  font-family: var(--cond);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--yellow);
+  letter-spacing: 0.12em;
+}
+.sysbar-time {
+  font-family: var(--cond);
+  font-size: 11px;
+  color: var(--grey);
+  letter-spacing: 0.05em;
+  margin-left: auto;
+}
+.sysbar-status {
+  font-family: var(--cond);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.led {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.5);
+}
+.led-red { background: var(--red); box-shadow: 0 0 8px var(--red), 0 0 0 1px rgba(0,0,0,0.5); animation: led-blink 1s step-end infinite; }
+.led-green { background: var(--green); box-shadow: 0 0 8px var(--green), 0 0 0 1px rgba(0,0,0,0.5); }
+@keyframes led-blink { 50% { opacity: 0.2; } }
+
+/* TOP BAR */
+.topbar {
+  height: 52px;
+  background: var(--panel);
+  border-bottom: 3px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 20px;
+  gap: 20px;
+  position: relative;
+  z-index: 100;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05);
+}
+.topbar-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.brand-plate {
+  background: var(--plate);
+  border: 2px solid var(--yellow);
+  padding: 4px 12px;
+  font-family: var(--cond);
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--yellow);
+  letter-spacing: 0.08em;
+  clip-path: polygon(8px 0%, 100% 0%, calc(100% - 8px) 100%, 0% 100%);
+}
+.asset-tag {
+  font-family: var(--cond);
+  font-size: 11px;
+  color: var(--grey);
+  letter-spacing: 0.1em;
+  border: 1px solid var(--border2);
+  padding: 3px 10px;
+  background: var(--plate);
+}
+.file-tag {
+  font-family: var(--cond);
+  font-size: 14px;
+  color: var(--white);
+  letter-spacing: 0.03em;
+  border-left: 3px solid var(--yellow);
+  padding-left: 10px;
+}
+.status-chips { display: flex; gap: 8px; margin-left: auto; }
+.chip {
+  font-family: var(--cond);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 6px 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  clip-path: polygon(6px 0%, 100% 0%, calc(100% - 6px) 100%, 0% 100%);
+}
+.chip-err { background: var(--red-dim); color: var(--red); border: 1px solid var(--red); }
+.chip-warn { background: var(--panel); color: var(--orange); border: 1px solid var(--orange); }
+.topbar-actions { display: flex; gap: 8px; }
+.btn {
+  font-family: var(--cond);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 7px 18px;
+  border: 2px solid var(--border2);
+  background: var(--panel2);
+  color: var(--grey);
+  cursor: pointer;
+  text-transform: uppercase;
+  transition: all 0.1s;
+  clip-path: polygon(4px 0%, 100% 0%, calc(100% - 4px) 100%, 0% 100%);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.05), 0 2px 4px rgba(0,0,0,0.3);
+}
+.btn:hover { background: var(--panel3); color: var(--white); border-color: var(--yellow); }
+.btn:active { transform: translateY(1px); }
+.btn-primary { background: var(--yellow); color: var(--gunmetal); border-color: var(--yellow); font-weight: 800; }
+.btn-primary:hover { background: #ffe033; }
+
+/* MAIN LAYOUT */
+.layout {
+  display: flex;
+  height: calc(900px - 22px - 52px - 26px);
+  position: relative;
+  z-index: 1;
+}
+
+/* SIDEBAR */
+.sidebar {
+  width: 264px;
+  min-width: 264px;
+  background: var(--panel);
+  border-right: 3px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 4px 0 12px rgba(0,0,0,0.3);
+}
+.sidebar-header {
+  padding: 12px 16px;
+  background: var(--plate);
+  border-bottom: 2px solid var(--yellow-dim);
+}
+.sidebar-header-label {
+  font-family: var(--cond);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--yellow);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+.sidebar-header-val {
+  font-family: var(--cond);
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--white);
+  line-height: 1;
+  margin-top: 2px;
+}
+.sidebar-header-sub {
+  font-family: var(--body);
+  font-size: 10px;
+  color: var(--grey);
+  margin-top: 2px;
+}
+
+/* Gauge-style stats */
+.gauge-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  border-bottom: 2px solid var(--border);
+}
+.gauge-cell {
+  padding: 10px;
+  text-align: center;
+  border-right: 1px solid var(--border);
+}
+.gauge-cell:last-child { border-right: none; }
+.gauge-num {
+  font-family: var(--cond);
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1;
+  display: block;
+}
+.gauge-num.err { color: var(--red); text-shadow: 0 0 12px rgba(255,45,45,0.5); }
+.gauge-num.warn { color: var(--orange); text-shadow: 0 0 12px rgba(255,140,0,0.4); }
+.gauge-num.ok { color: var(--green); text-shadow: 0 0 12px rgba(0,230,118,0.4); }
+.gauge-label {
+  font-family: var(--cond);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--grey2);
+  display: block;
+  margin-top: 2px;
+}
+
+/* Rule buttons (physical switch style) */
+.rules-list { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.rules-list::-webkit-scrollbar { width: 4px; }
+.rules-list::-webkit-scrollbar-thumb { background: var(--border2); }
+
+.rule-btn {
+  background: var(--panel2);
+  border: 2px solid var(--border);
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: all 0.1s;
+  box-shadow: inset 0 2px 0 rgba(255,255,255,0.04), 0 3px 6px rgba(0,0,0,0.3);
+  position: relative;
+}
+.rule-btn::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: rgba(255,255,255,0.08);
+}
+.rule-btn:hover { background: var(--panel3); border-color: var(--border2); }
+.rule-btn.err { border-left: 4px solid var(--red); }
+.rule-btn.warn { border-left: 4px solid var(--orange); }
+.rule-btn.ok { border-left: 4px solid var(--green); }
+.rule-btn-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.rule-code {
+  font-family: var(--cond);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  color: var(--grey2);
+}
+.rule-btn-name {
+  font-family: var(--cond);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--white);
+  flex: 1;
+  margin-top: 3px;
+}
+/* Physical toggle switch */
+.phys-toggle {
+  width: 40px;
+  height: 20px;
+  background: var(--plate);
+  border: 2px solid var(--yellow);
+  border-radius: 0;
+  position: relative;
+  flex-shrink: 0;
+}
+.phys-toggle::after {
+  content: 'ON';
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--cond);
+  font-size: 8px;
+  font-weight: 800;
+  color: var(--yellow);
+  letter-spacing: 0.05em;
+}
+.rule-btn-bottom { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.led-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--cond);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.led-indicator .led { width: 6px; height: 6px; }
+.led-indicator.err { color: var(--red); }
+.led-indicator.warn { color: var(--orange); }
+.led-indicator.ok { color: var(--green); }
+.fault-badge {
+  font-family: var(--cond);
+  font-size: 10px;
+  font-weight: 800;
+  padding: 1px 7px;
+  letter-spacing: 0.08em;
+  margin-left: auto;
+}
+.fault-badge.err { background: var(--red-dim); color: var(--red); border: 1px solid var(--red); }
+.fault-badge.warn { background: rgba(255,140,0,0.15); color: var(--orange); border: 1px solid var(--orange); }
+.fault-badge.ok { background: var(--green-dim); color: var(--green); border: 1px solid var(--green); }
+
+/* CENTER PANEL */
+.center-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--gunmetal);
+  overflow: hidden;
+}
+.panel-header {
+  height: 36px;
+  background: var(--plate);
+  border-bottom: 2px solid var(--border);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 16px;
+}
+.panel-header-label {
+  font-family: var(--cond);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--yellow);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.panel-header-sep { width: 1px; height: 20px; background: var(--border2); }
+.panel-header-info {
+  font-family: var(--cond);
+  font-size: 12px;
+  color: var(--grey);
+  letter-spacing: 0.05em;
+}
+.cell-ref {
+  font-family: var(--cond);
+  font-size: 12px;
+  font-weight: 700;
+  background: var(--panel2);
+  border: 1px solid var(--border2);
+  padding: 3px 10px;
+  color: var(--white);
+  letter-spacing: 0.05em;
+}
+.panel-header-right { margin-left: auto; display: flex; align-items: center; gap: 8px; }
+.fault-chip {
+  font-family: var(--cond);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  padding: 3px 10px;
+  background: var(--red-dim);
+  color: var(--red);
+  border: 1px solid var(--red);
+  animation: led-blink 2s step-end infinite;
+}
+
+/* DATA GRID */
+.grid-wrapper {
+  flex: 1;
+  overflow: auto;
+}
+.grid-wrapper::-webkit-scrollbar { width: 8px; height: 8px; }
+.grid-wrapper::-webkit-scrollbar-track { background: var(--plate); }
+.grid-wrapper::-webkit-scrollbar-thumb { background: var(--border2); }
+
+.data-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.data-grid th, .data-grid td {
+  border: 1px solid var(--border);
+  padding: 0;
+  white-space: nowrap;
+}
+.col-num {
+  width: 36px;
+  text-align: center;
+  background: var(--plate) !important;
+  color: var(--grey2);
+  font-family: var(--cond);
+  font-size: 10px;
+  padding: 5px 4px;
+  border-color: var(--border2) !important;
+}
+.th-col {
+  background: var(--panel2) !important;
+  color: var(--yellow);
+  font-family: var(--cond);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-align: center;
+  padding: 6px 10px;
+  text-transform: uppercase;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 2px solid var(--yellow-dim) !important;
+}
+.cell { padding: 5px 10px; background: var(--panel); font-family: var(--body); }
+.cell-num { text-align: right; font-family: var(--cond); letter-spacing: 0.03em; }
+.cell-center { text-align: center; }
+.cell-merged {
+  text-align: center;
+  font-family: var(--cond);
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--yellow);
+  background: var(--plate) !important;
+  padding: 10px;
+  letter-spacing: 0.05em;
+  border-bottom: 2px solid var(--yellow-dim) !important;
+}
+.cell-meta {
+  background: var(--panel2) !important;
+  color: var(--grey);
+  font-size: 11px;
+  font-family: var(--cond);
+}
+.cell-hdr {
+  background: var(--panel2) !important;
+  color: var(--yellow);
+  font-family: var(--cond);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  border-bottom: 2px solid var(--yellow-dim) !important;
+}
+.cell-subtotal {
+  background: var(--panel2) !important;
+  font-family: var(--cond);
+  font-weight: 700;
+  color: var(--white);
+}
+
+/* Hazard pattern error */
+.cell-error {
+  background: var(--red-dim) !important;
+  color: var(--red) !important;
+  font-family: var(--cond);
+  font-weight: 800;
+  position: relative;
+  overflow: hidden;
+  animation: err-flicker 3s ease-in-out infinite;
+}
+.cell-error::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255,45,45,0.15) 0px,
+    rgba(255,45,45,0.15) 4px,
+    transparent 4px,
+    transparent 12px
+  );
+}
+.cell-error-inner { position: relative; z-index: 1; }
+@keyframes err-flicker {
+  0%, 90%, 100% { box-shadow: 0 0 0 1px var(--red) inset; }
+  95% { box-shadow: 0 0 0 2px var(--red) inset, 0 0 12px rgba(255,45,45,0.4); }
+}
+
+.cell-warn {
+  background: rgba(255,140,0,0.1) !important;
+  color: var(--orange) !important;
+  font-family: var(--cond);
+  font-weight: 700;
+  border-color: var(--orange) !important;
+}
+.cell-dup {
+  background: rgba(255,140,0,0.05) !important;
+  color: var(--grey);
+  border-color: rgba(255,140,0,0.3) !important;
+  text-decoration: underline dotted var(--orange);
+}
+
+/* BOTTOM PANEL */
+.bottom-panel {
+  border-top: 3px solid var(--yellow);
+  background: var(--panel);
+  height: 196px;
+  display: flex;
+  flex-direction: column;
+}
+.bottom-header {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  background: var(--plate);
+  border-bottom: 2px solid var(--border);
+  padding: 0 16px;
+  gap: 12px;
+}
+.bottom-title {
+  font-family: var(--cond);
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--yellow);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+.fault-count {
+  font-family: var(--cond);
+  font-size: 11px;
+  font-weight: 800;
+  padding: 2px 8px;
+  letter-spacing: 0.08em;
+}
+.fault-count.err { background: var(--red-dim); color: var(--red); border: 1px solid var(--red); }
+.fault-count.warn { background: rgba(255,140,0,0.1); color: var(--orange); border: 1px solid var(--orange); }
+.bottom-hint { margin-left: auto; font-family: var(--cond); font-size: 10px; color: var(--grey2); letter-spacing: 0.05em; }
+.issue-list { flex: 1; overflow-y: auto; }
+.issue-list::-webkit-scrollbar { width: 4px; }
+.issue-list::-webkit-scrollbar-thumb { background: var(--border2); }
+.issue-row {
+  display: grid;
+  grid-template-columns: 24px 80px 56px 1fr;
+  align-items: center;
+  height: 32px;
+  border-bottom: 1px solid var(--border);
+  padding: 0 16px;
+  gap: 12px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.issue-row:hover { background: var(--panel2); }
+.issue-idx {
+  font-family: var(--cond);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--grey2);
+  text-align: right;
+}
+.issue-type {
+  font-family: var(--cond);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.issue-type.err { color: var(--red); }
+.issue-type.warn { color: var(--orange); }
+.issue-cell {
+  font-family: var(--cond);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--white);
+  background: var(--panel2);
+  border: 1px solid var(--border2);
+  padding: 2px 8px;
+  text-align: center;
+  letter-spacing: 0.05em;
+}
+.issue-desc {
+  font-family: var(--body);
+  font-size: 12px;
+  color: var(--grey);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.issue-desc strong { color: var(--white); }
+
+/* BOTTOM STATUS BAR */
+.statusbar {
+  height: 26px;
+  background: var(--plate);
+  border-top: 2px solid var(--yellow);
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  gap: 20px;
+  position: relative;
+  z-index: 100;
+}
+.status-main {
+  font-family: var(--cond);
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--red);
+  letter-spacing: 0.1em;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  animation: led-blink 2s step-end infinite;
+}
+.status-item {
+  font-family: var(--cond);
+  font-size: 11px;
+  color: var(--grey);
+  letter-spacing: 0.06em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.status-right { margin-left: auto; }
+.status-time {
+  font-family: var(--cond);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--yellow);
+  letter-spacing: 0.08em;
+}
+</style>
+</head>
+<body>
+
+<!-- SYSTEM BAR -->
+<div class="sysbar">
+  <span class="sysbar-id">SYS-ID: EV-2200 · PLANT: FAB-B2 · UNIT: INFRA-CTRL</span>
+  <span class="sysbar-status">
+    <span class="led led-red"></span>
+    FAULT DETECTED
+  </span>
+  <span class="sysbar-time">2026-05-05 09:42:17 · KST</span>
+</div>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="topbar-brand">
+    <div class="brand-plate">EXCEL VALIDATOR</div>
+    <span class="asset-tag">ASSET: EV-2200</span>
+    <span class="file-tag">sample_settlement.xlsx</span>
+  </div>
+  <div class="status-chips">
+    <div class="chip chip-err">
+      <span class="led led-red" style="width:7px;height:7px;"></span>
+      2 FAULTS
+    </div>
+    <div class="chip chip-warn">
+      <span class="led" style="width:7px;height:7px;background:var(--orange);box-shadow:0 0 6px var(--orange);"></span>
+      3 CAUTIONS
+    </div>
+  </div>
+  <div class="topbar-actions">
+    <button class="btn">재파싱</button>
+    <button class="btn">내보내기</button>
+    <button class="btn btn-primary">보고서 생성</button>
+  </div>
+</div>
+
+<!-- MAIN LAYOUT -->
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-header">
+      <div class="sidebar-header-label">검증 제어반</div>
+      <div class="sidebar-header-val">5 RULES ARMED</div>
+      <div class="sidebar-header-sub">최종 스캔: 2026-05-05 09:42:17</div>
+    </div>
+
+    <div class="gauge-row">
+      <div class="gauge-cell">
+        <span class="gauge-num err">2</span>
+        <span class="gauge-label">FAULT</span>
+      </div>
+      <div class="gauge-cell">
+        <span class="gauge-num warn">3</span>
+        <span class="gauge-label">CAUTION</span>
+      </div>
+      <div class="gauge-cell">
+        <span class="gauge-num ok">1</span>
+        <span class="gauge-label">CLEAR</span>
+      </div>
+    </div>
+
+    <div class="rules-list">
+
+      <div class="rule-btn err">
+        <div class="rule-btn-top">
+          <span class="rule-code">RULE-01</span>
+          <div class="phys-toggle"></div>
+        </div>
+        <div class="rule-btn-name">자재비 합계 검증</div>
+        <div class="rule-btn-bottom">
+          <div class="led-indicator err">
+            <span class="led led-red"></span>
+            1건 적발
+          </div>
+          <span class="fault-badge err">FAULT</span>
+        </div>
+      </div>
+
+      <div class="rule-btn err">
+        <div class="rule-btn-top">
+          <span class="rule-code">RULE-02</span>
+          <div class="phys-toggle"></div>
+        </div>
+        <div class="rule-btn-name">인건비 합계 검증</div>
+        <div class="rule-btn-bottom">
+          <div class="led-indicator err">
+            <span class="led led-red"></span>
+            1건 적발
+          </div>
+          <span class="fault-badge err">FAULT</span>
+        </div>
+      </div>
+
+      <div class="rule-btn warn">
+        <div class="rule-btn-top">
+          <span class="rule-code">RULE-03</span>
+          <div class="phys-toggle" style="border-color:var(--orange);"></div>
+        </div>
+        <div class="rule-btn-name">단가 이상치 (3σ)</div>
+        <div class="rule-btn-bottom">
+          <div class="led-indicator warn">
+            <span class="led" style="background:var(--orange);box-shadow:0 0 6px var(--orange);"></span>
+            1건 적발
+          </div>
+          <span class="fault-badge warn">CAUTION</span>
+        </div>
+      </div>
+
+      <div class="rule-btn warn">
+        <div class="rule-btn-top">
+          <span class="rule-code">RULE-04</span>
+          <div class="phys-toggle" style="border-color:var(--orange);"></div>
+        </div>
+        <div class="rule-btn-name">중복 항목 검출</div>
+        <div class="rule-btn-bottom">
+          <div class="led-indicator warn">
+            <span class="led" style="background:var(--orange);box-shadow:0 0 6px var(--orange);"></span>
+            1건 적발
+          </div>
+          <span class="fault-badge warn">CAUTION</span>
+        </div>
+      </div>
+
+      <div class="rule-btn ok">
+        <div class="rule-btn-top">
+          <span class="rule-code">RULE-05</span>
+          <div class="phys-toggle" style="border-color:var(--green);"></div>
+        </div>
+        <div class="rule-btn-name">필수 항목 누락</div>
+        <div class="rule-btn-bottom">
+          <div class="led-indicator ok">
+            <span class="led led-green"></span>
+            0건 적발
+          </div>
+          <span class="fault-badge ok">CLEAR</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- CENTER -->
+  <div class="center-panel">
+    <div class="panel-header">
+      <span class="panel-header-label">데이터 모니터</span>
+      <div class="panel-header-sep"></div>
+      <span class="cell-ref">F10</span>
+      <span class="panel-header-info">→ 자재비 소계</span>
+      <div class="panel-header-right">
+        <span class="panel-header-info">42ROW · 7COL</span>
+        <span class="fault-chip">2 FAULTS DETECTED</span>
+      </div>
+    </div>
+
+    <div class="grid-wrapper">
+      <table class="data-grid">
+        <thead>
+          <tr>
+            <th class="col-num th-col">#</th>
+            <th class="th-col">A</th>
+            <th class="th-col">B</th>
+            <th class="th-col">C</th>
+            <th class="th-col">D</th>
+            <th class="th-col">E</th>
+            <th class="th-col">F</th>
+            <th class="th-col">G</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-num">1</td>
+            <td colspan="7" class="cell cell-merged">정비 비용정산서 (2026년 5월)</td>
+          </tr>
+          <tr>
+            <td class="col-num">2</td>
+            <td colspan="3" class="cell cell-meta">정산일: 2026-05-03</td>
+            <td colspan="4" class="cell cell-meta">부서: 인프라팀</td>
+          </tr>
+          <tr>
+            <td class="col-num">3</td>
+            <td colspan="4" class="cell cell-meta">설비: CH-001 Chiller #1</td>
+            <td colspan="3" class="cell cell-meta">정비유형: 사후정비</td>
+          </tr>
+          <tr>
+            <td class="col-num">4</td>
+            <td colspan="7" class="cell" style="height:10px;background:var(--plate);"></td>
+          </tr>
+          <tr>
+            <td class="col-num">5</td>
+            <td class="cell cell-hdr">No.</td>
+            <td class="cell cell-hdr">자재명</td>
+            <td class="cell cell-hdr">규격/사양</td>
+            <td class="cell cell-hdr">수량</td>
+            <td class="cell cell-hdr cell-num">단가(원)</td>
+            <td class="cell cell-hdr cell-num">금액(원)</td>
+            <td class="cell cell-hdr">비고</td>
+          </tr>
+          <tr>
+            <td class="col-num">6</td>
+            <td class="cell cell-center">1</td>
+            <td class="cell">베어링 6205</td>
+            <td class="cell">NSK</td>
+            <td class="cell cell-num">4</td>
+            <td class="cell cell-num">15,000</td>
+            <td class="cell cell-num">60,000</td>
+            <td class="cell">정기교체</td>
+          </tr>
+          <tr>
+            <td class="col-num">7</td>
+            <td class="cell cell-center">2</td>
+            <td class="cell">V벨트 B-52</td>
+            <td class="cell">반도</td>
+            <td class="cell cell-num">2</td>
+            <td class="cell cell-num">8,500</td>
+            <td class="cell cell-num">17,000</td>
+            <td class="cell"></td>
+          </tr>
+          <tr>
+            <td class="col-num">8</td>
+            <td class="cell cell-center">3</td>
+            <td class="cell">윤활유 10L</td>
+            <td class="cell">SK ZIC</td>
+            <td class="cell cell-num">1</td>
+            <td class="cell cell-num cell-warn">350,000 ⚠</td>
+            <td class="cell cell-num">350,000</td>
+            <td class="cell cell-warn">단가확인</td>
+          </tr>
+          <tr>
+            <td class="col-num">9</td>
+            <td class="cell cell-center cell-dup">4</td>
+            <td class="cell cell-dup">베어링 6205</td>
+            <td class="cell cell-dup">NSK</td>
+            <td class="cell cell-num cell-dup">4</td>
+            <td class="cell cell-num cell-dup">15,000</td>
+            <td class="cell cell-num cell-dup">60,000</td>
+            <td class="cell cell-dup">추가요청 ⚠</td>
+          </tr>
+          <tr>
+            <td class="col-num">10</td>
+            <td colspan="5" class="cell cell-subtotal">소계</td>
+            <td class="cell cell-num cell-error"><span class="cell-error-inner">400,000 ✗</span></td>
+            <td class="cell cell-subtotal"></td>
+          </tr>
+          <tr>
+            <td class="col-num">11</td>
+            <td colspan="7" class="cell" style="height:10px;background:var(--plate);"></td>
+          </tr>
+          <tr>
+            <td class="col-num">12</td>
+            <td colspan="7" class="cell cell-hdr" style="color:var(--grey);font-size:11px;border-bottom:1px solid var(--border)!important;">인건비 명세</td>
+          </tr>
+          <tr>
+            <td class="col-num">13</td>
+            <td class="cell cell-hdr">구분</td>
+            <td class="cell cell-hdr">성명</td>
+            <td class="cell cell-hdr">직급</td>
+            <td class="cell cell-hdr">작업시간</td>
+            <td class="cell cell-hdr cell-num">단가(원/h)</td>
+            <td class="cell cell-hdr cell-num">금액(원)</td>
+            <td class="cell cell-hdr">비고</td>
+          </tr>
+          <tr>
+            <td class="col-num">14</td>
+            <td class="cell">일반정비</td>
+            <td class="cell">박기사</td>
+            <td class="cell">기사</td>
+            <td class="cell cell-num cell-warn">26h ⚠</td>
+            <td class="cell cell-num">55,000</td>
+            <td class="cell cell-num">1,430,000</td>
+            <td class="cell cell-warn">시간초과</td>
+          </tr>
+          <tr>
+            <td class="col-num">15</td>
+            <td class="cell">전기점검</td>
+            <td class="cell">김전기</td>
+            <td class="cell">기술사</td>
+            <td class="cell cell-num">20h</td>
+            <td class="cell cell-num">110,000</td>
+            <td class="cell cell-num">2,200,000</td>
+            <td class="cell"></td>
+          </tr>
+          <tr>
+            <td class="col-num">16</td>
+            <td colspan="5" class="cell cell-subtotal">소계</td>
+            <td class="cell cell-num cell-error"><span class="cell-error-inner">3,200,000 ✗</span></td>
+            <td class="cell cell-subtotal"></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- BOTTOM PANEL -->
+    <div class="bottom-panel">
+      <div class="bottom-header">
+        <span class="bottom-title">장애 로그</span>
+        <span class="fault-count err">FAULT × 2</span>
+        <span class="fault-count warn">CAUTION × 3</span>
+        <span class="bottom-hint">[ 항목 클릭 → 해당 셀 이동 ]</span>
+      </div>
+      <div class="issue-list">
+        <div class="issue-row">
+          <span class="issue-idx">01</span>
+          <div class="issue-type err"><span class="led led-red" style="width:6px;height:6px;"></span> FAULT</div>
+          <span class="issue-cell">F10</span>
+          <span class="issue-desc">자재비 합계 불일치 — 표시값 <strong>400,000</strong> ≠ 계산값 <strong>487,000</strong> (차이: 87,000원)</span>
+        </div>
+        <div class="issue-row">
+          <span class="issue-idx">02</span>
+          <div class="issue-type err"><span class="led led-red" style="width:6px;height:6px;"></span> FAULT</div>
+          <span class="issue-cell">F20</span>
+          <span class="issue-desc">인건비 합계 불일치 — 표시값 <strong>3,200,000</strong> ≠ 계산값 <strong>3,630,000</strong> (차이: 430,000원)</span>
+        </div>
+        <div class="issue-row">
+          <span class="issue-idx">03</span>
+          <div class="issue-type warn"><span class="led" style="width:6px;height:6px;background:var(--orange);"></span> CAUTION</div>
+          <span class="issue-cell">E8</span>
+          <span class="issue-desc">단가 이상치 — 윤활유 <strong>350,000원</strong> (평균 112,000 대비 <strong>312%</strong>)</span>
+        </div>
+        <div class="issue-row">
+          <span class="issue-idx">04</span>
+          <div class="issue-type warn"><span class="led" style="width:6px;height:6px;background:var(--orange);"></span> CAUTION</div>
+          <span class="issue-cell">A9</span>
+          <span class="issue-desc">중복 항목 — 베어링 6205 동일 수량/금액 <strong>2회 청구</strong></span>
+        </div>
+        <div class="issue-row">
+          <span class="issue-idx">05</span>
+          <div class="issue-type warn"><span class="led" style="width:6px;height:6px;background:var(--orange);"></span> CAUTION</div>
+          <span class="issue-cell">D14</span>
+          <span class="issue-desc">근무시간 초과 — 박기사 <strong>26h</strong> (24h 한도 초과)</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- STATUS BAR -->
+<div class="statusbar">
+  <div class="status-main">
+    <span class="led led-red"></span>
+    SYSTEM STATUS: 2 FAULTS DETECTED — IMMEDIATE ACTION REQUIRED
+  </div>
+  <div class="status-item" style="margin-left:20px;">
+    <span class="led led-green"></span>
+    ENGINE: ONLINE
+  </div>
+  <div class="status-item">SHEET: 정산서_2026_05</div>
+  <div class="status-item">ROWS: 42</div>
+  <div class="status-right">
+    <span class="status-time">2026-05-05 09:42:17 KST</span>
+  </div>
+</div>
+
+</body>
+</html>

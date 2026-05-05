@@ -7,3 +7,16 @@ __pycache__/
 *.spec
 build/
 dist/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Playwright MCP
+.playwright-mcp/
+
+# Screenshots
+screenshot_*.png
+
+# Sample files
+sample_settlement.xlsx

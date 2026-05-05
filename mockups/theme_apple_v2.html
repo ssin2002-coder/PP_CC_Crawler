@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>Excel Validator</title>
+<style>
+  :root {
+    --bg: #000;
+    --s1: #0d0d0d;
+    --s2: #1a1a1a;
+    --s3: #2a2a2a;
+    --s4: #3a3a3a;
+    --white: #f5f5f7;
+    --dim: rgba(255,255,255,.5);
+    --faint: rgba(255,255,255,.2);
+    --ghost: rgba(255,255,255,.07);
+    --line: rgba(255,255,255,.06);
+    --blue: #2997ff;
+    --blue-bg: rgba(41,151,255,.1);
+    --red: #ff453a;
+    --red-bg: rgba(255,69,58,.1);
+    --amber: #ff9f0a;
+    --amber-bg: rgba(255,159,10,.1);
+    --green: #30d158;
+    --purple: #bf5af2;
+    --purple-bg: rgba(191,90,242,.1);
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: -apple-system, 'Helvetica Neue', sans-serif;
+    background: var(--bg);
+    color: var(--white);
+    height: 100vh;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ========================================
+     TOP NAV — 얇고 투명, Apple Safari 느낌
+     ======================================== */
+  .topnav {
+    height: 44px;
+    display: flex;
+    align-items: center;
+    padding: 0 28px;
+    background: rgba(13,13,13,.8);
+    backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: .5px solid var(--line);
+    position: relative;
+    z-index: 100;
+  }
+  .topnav .brand {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: -.02em;
+  }
+  .topnav .brand i {
+    width: 22px; height: 22px;
+    background: linear-gradient(135deg, var(--blue), #5e5ce6);
+    border-radius: 6px;
+    display: grid; place-items: center;
+  }
+  .topnav .brand i::after {
+    content: '✓';
+    font-style: normal;
+    font-size: 12px;
+    color: #fff;
+  }
+  .topnav .sep {
+    width: .5px;
+    height: 16px;
+    background: var(--faint);
+    margin: 0 14px;
+  }
+  .topnav .file {
+    font-size: 12px;
+    color: var(--dim);
+    font-weight: 400;
+  }
+  .topnav .file::before {
+    content: '';
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    margin-right: 6px;
+    vertical-align: middle;
+    box-shadow: 0 0 6px rgba(48,209,88,.5);
+  }
+  .topnav .spacer { flex:1; }
+  .topnav .actions { display:flex; gap:6px; }
+  .pill-btn {
+    padding: 4px 14px;
+    border-radius: 100px;
+    font-size: 11px;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    transition: all .2s;
+    letter-spacing: -.01em;
+  }
+  .pill-btn.ghost {
+    background: transparent;
+    color: var(--dim);
+    border: .5px solid var(--s4);
+  }
+  .pill-btn.ghost:hover { background: var(--s2); color: var(--white); }
+  .pill-btn.accent { background: var(--blue); color: #fff; }
+  .pill-btn.accent:hover { filter: brightness(1.2); }
+
+  /* ========================================
+     HERO STRIP — 큰 숫자 요약 (Apple 제품 페이지 스타일)
+     ======================================== */
+  .hero {
+    height: 100px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 80px;
+    background: linear-gradient(180deg, var(--s1) 0%, var(--bg) 100%);
+    border-bottom: .5px solid var(--line);
+    position: relative;
+  }
+  .hero::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 200px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--blue), transparent);
+    opacity: .4;
+  }
+  .hero-stat {
+    text-align: center;
+    animation: fadeUp .6s ease backwards;
+  }
+  .hero-stat:nth-child(1) { animation-delay: .1s; }
+  .hero-stat:nth-child(2) { animation-delay: .2s; }
+  .hero-stat:nth-child(3) { animation-delay: .3s; }
+
+  .hero-num {
+    font-size: 40px;
+    font-weight: 700;
+    letter-spacing: -.04em;
+    line-height: 1;
+  }
+  .hero-num.red { color: var(--red); }
+  .hero-num.amber { color: var(--amber); }
+  .hero-num.green { color: var(--green); }
+
+  .hero-label {
+    font-size: 11px;
+    color: var(--dim);
+    margin-top: 6px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: .08em;
+  }
+
+  /* ========================================
+     MAIN — 좌측 이슈 드로어 + 전체 폭 그리드
+     ======================================== */
+  .main {
+    display: flex;
+    height: calc(100vh - 144px);
+    overflow: hidden;
+  }
+
+  /* ========================================
+     SIDE DRAWER — 슬라이드 패널
+     ======================================== */
+  .drawer {
+    width: 320px;
+    flex-shrink: 0;
+    background: var(--s1);
+    border-right: .5px solid var(--line);
+    display: flex;
+    flex-direction: column;
+    animation: slideIn .5s ease;
+  }
+
+  @keyframes slideIn {
+    from { transform: translateX(-20px); opacity: 0; }
+    to { transform: translateX(0); opacity: 1; }
+  }
+
+  /* Tabs */
+  .drawer-tabs {
+    display: flex;
+    padding: 16px 20px 0;
+    gap: 0;
+  }
+  .drawer-tab {
+    flex: 1;
+    text-align: center;
+    padding: 8px 0;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--dim);
+    cursor: pointer;
+    position: relative;
+    transition: color .2s;
+    letter-spacing: -.01em;
+  }
+  .drawer-tab.active { color: var(--white); }
+  .drawer-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 20%;
+    right: 20%;
+    height: 2px;
+    background: var(--blue);
+    border-radius: 1px;
+  }
+  .drawer-tab .badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 5px;
+    border-radius: 100px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-left: 4px;
+    vertical-align: middle;
+  }
+  .badge-red { background: var(--red-bg); color: var(--red); }
+  .badge-amber { background: var(--amber-bg); color: var(--amber); }
+
+  .drawer-divider {
+    height: .5px;
+    background: var(--line);
+    margin: 0 20px;
+  }
+
+  /* Content area */
+  .drawer-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 12px;
+  }
+  .drawer-content::-webkit-scrollbar { width: 3px; }
+  .drawer-content::-webkit-scrollbar-thumb { background: var(--s4); border-radius: 2px; }
+
+  /* Issue cards */
+  .issue-card {
+    padding: 14px 16px;
+    border-radius: 12px;
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: all .2s;
+    border: .5px solid transparent;
+    position: relative;
+    overflow: hidden;
+  }
+  .issue-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; bottom: 0;
+    width: 3px;
+    border-radius: 0 2px 2px 0;
+  }
+  .issue-card.error::before { background: var(--red); }
+  .issue-card.warning::before { background: var(--amber); }
+  .issue-card:hover {
+    background: var(--ghost);
+    border-color: var(--line);
+  }
+  .issue-card.active {
+    background: var(--blue-bg);
+    border-color: rgba(41,151,255,.2);
+  }
+  .issue-card.active::before { background: var(--blue); }
+
+  .ic-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 8px;
+  }
+  .ic-sev {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 2px 7px;
+    border-radius: 4px;
+    letter-spacing: .05em;
+  }
+  .ic-sev.error { background: var(--red-bg); color: var(--red); }
+  .ic-sev.warning { background: var(--amber-bg); color: var(--amber); }
+
+  .ic-cell {
+    font-family: 'SF Mono', 'Menlo', monospace;
+    font-size: 11px;
+    color: var(--blue);
+    background: var(--blue-bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: 500;
+  }
+  .ic-rule {
+    font-size: 10px;
+    color: var(--faint);
+    margin-left: auto;
+  }
+
+  .ic-desc {
+    font-size: 13px;
+    color: rgba(255,255,255,.75);
+    line-height: 1.45;
+    letter-spacing: -.01em;
+    margin-bottom: 8px;
+  }
+
+  .ic-vals {
+    display: flex;
+    gap: 20px;
+    font-size: 12px;
+    font-family: 'SF Mono', monospace;
+  }
+  .ic-vals span { display: flex; align-items: center; gap: 4px; }
+  .ic-vals .label { color: var(--faint); font-family: -apple-system, sans-serif; font-size: 10px; }
+  .v-red { color: var(--red); }
+  .v-green { color: var(--green); }
+
+  /* Rule toggles section */
+  .rules-toggle-bar {
+    padding: 14px 20px;
+    border-top: .5px solid var(--line);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .rule-chip {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    border-radius: 100px;
+    font-size: 11px;
+    font-weight: 500;
+    background: var(--s2);
+    border: .5px solid var(--line);
+    cursor: pointer;
+    transition: all .15s;
+    letter-spacing: -.01em;
+    color: var(--dim);
+  }
+  .rule-chip.on { color: var(--white); border-color: var(--s4); }
+  .rule-chip .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+  }
+  .rule-chip.on .dot.err { background: var(--red); box-shadow: 0 0 6px rgba(255,69,58,.5); }
+  .rule-chip.on .dot.wrn { background: var(--amber); box-shadow: 0 0 6px rgba(255,159,10,.5); }
+  .rule-chip.on .dot.ok { background: var(--s4); }
+  .rule-chip:not(.on) .dot { background: var(--s4); }
+  .rule-chip:hover { background: var(--s3); }
+
+  /* ========================================
+     GRID AREA — 전체 폭, 몰입감
+     ======================================== */
+  .grid-wrap {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    position: relative;
+  }
+
+  .sheet-strip {
+    display: flex;
+    align-items: center;
+    height: 36px;
+    padding: 0 20px;
+    gap: 2px;
+    background: var(--s1);
+    border-bottom: .5px solid var(--line);
+  }
+  .stab {
+    padding: 6px 16px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--dim);
+    border-radius: 6px 6px 0 0;
+    cursor: pointer;
+    transition: all .15s;
+    letter-spacing: -.01em;
+    position: relative;
+  }
+  .stab:hover { color: var(--white); }
+  .stab.active { color: var(--white); background: var(--bg); }
+  .stab.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--blue);
+  }
+  .sheet-strip .info {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--faint);
+    font-family: 'SF Mono', monospace;
+    letter-spacing: .02em;
+  }
+
+  .grid-scroll {
+    flex: 1;
+    overflow: auto;
+    position: relative;
+  }
+  .grid-scroll::-webkit-scrollbar { width: 5px; height: 5px; }
+  .grid-scroll::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 3px; }
+  .grid-scroll::-webkit-scrollbar-corner { background: transparent; }
+
+  table.g {
+    border-collapse: collapse;
+    font-size: 12px;
+    min-width: 100%;
+    font-variant-numeric: tabular-nums;
+  }
+  table.g th {
+    background: #0a0a0a;
+    color: var(--faint);
+    font-size: 10px;
+    font-weight: 500;
+    padding: 5px 14px;
+    text-align: center;
+    border: .5px solid var(--line);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    letter-spacing: .04em;
+  }
+  table.g th.corner {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    width: 42px;
+    background: #0a0a0a;
+  }
+  table.g td {
+    padding: 8px 14px;
+    border: .5px solid var(--line);
+    letter-spacing: -.01em;
+    transition: background .12s;
+    line-height: 1.35;
+  }
+  table.g td.rn {
+    background: #0a0a0a;
+    color: var(--faint);
+    text-align: center;
+    font-size: 10px;
+    width: 42px;
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    font-weight: 500;
+  }
+  table.g tr:hover td:not(.rn) { background: rgba(255,255,255,.015); }
+
+  /* Cell variants */
+  .ct { font-size: 16px; font-weight: 600; letter-spacing: -.03em; }
+  .cl { color: var(--faint); font-weight: 500; font-size: 11px; }
+  .ch {
+    background: rgba(255,255,255,.025) !important;
+    font-weight: 600;
+    font-size: 10px;
+    color: var(--dim);
+    text-transform: uppercase;
+    letter-spacing: .06em;
+  }
+  .cn { text-align: right; font-family: 'SF Mono', 'Menlo', monospace; font-size: 12px; }
+  .cb { font-weight: 600; }
+
+  /* Error cell — 빨간 상단 바 + 배경 */
+  .ce {
+    background: var(--red-bg) !important;
+    position: relative;
+  }
+  .ce::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 1.5px solid rgba(255,69,58,.35);
+    border-radius: 2px;
+    pointer-events: none;
+  }
+
+  /* Warning cell */
+  .cw {
+    background: var(--amber-bg) !important;
+    position: relative;
+  }
+  .cw::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 1.5px solid rgba(255,159,10,.3);
+    border-radius: 2px;
+    pointer-events: none;
+  }
+
+  /* Duplicate cell */
+  .cd {
+    background: var(--purple-bg) !important;
+    position: relative;
+  }
+  .cd::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 1.5px solid rgba(191,90,242,.25);
+    border-radius: 2px;
+    pointer-events: none;
+  }
+
+  /* Selected cell */
+  .cs {
+    outline: 2px solid var(--blue);
+    outline-offset: -1px;
+    z-index: 1;
+    position: relative;
+  }
+
+  /* Section row */
+  .rs td {
+    background: rgba(41,151,255,.03) !important;
+    padding: 12px 14px;
+  }
+  .rs td:first-child + td {
+    color: var(--blue);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: -.01em;
+  }
+
+  /* Subtotal row */
+  .rt td {
+    background: rgba(255,255,255,.02) !important;
+    font-weight: 600;
+    border-top: .5px solid rgba(255,255,255,.1);
+  }
+
+  /* ========================================
+     FLOATING INFO — 그리드 위 오버레이
+     ======================================== */
+  .float-info {
+    position: absolute;
+    bottom: 16px;
+    right: 20px;
+    display: flex;
+    gap: 8px;
+    z-index: 10;
+    animation: fadeUp .4s ease .5s backwards;
+  }
+  .float-chip {
+    padding: 6px 14px;
+    background: rgba(26,26,26,.85);
+    backdrop-filter: blur(12px);
+    border: .5px solid var(--line);
+    border-radius: 100px;
+    font-size: 11px;
+    color: var(--dim);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+  .float-chip kbd {
+    font-family: 'SF Mono', monospace;
+    font-size: 10px;
+    background: var(--s3);
+    padding: 1px 5px;
+    border-radius: 3px;
+    color: var(--white);
+  }
+
+  /* ========================================
+     ANIMATIONS
+     ======================================== */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .hero-stat .hero-num { animation: countUp .8s ease backwards; }
+  @keyframes countUp {
+    from { opacity: 0; transform: scale(.8); filter: blur(4px); }
+    to { opacity: 1; transform: scale(1); filter: blur(0); }
+  }
+
+  .issue-card {
+    animation: fadeUp .35s ease backwards;
+  }
+  .issue-card:nth-child(1) { animation-delay: .15s; }
+  .issue-card:nth-child(2) { animation-delay: .2s; }
+  .issue-card:nth-child(3) { animation-delay: .25s; }
+  .issue-card:nth-child(4) { animation-delay: .3s; }
+  .issue-card:nth-child(5) { animation-delay: .35s; }
+
+  @keyframes glow {
+    0%, 100% { opacity: 1; }
+    50% { opacity: .5; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- NAV -->
+  <div class="topnav">
+    <div class="brand"><i></i> Excel Validator</div>
+    <div class="sep"></div>
+    <div class="file">sample_settlement.xlsx</div>
+    <div class="spacer"></div>
+    <div class="actions">
+      <button class="pill-btn ghost">내보내기</button>
+      <button class="pill-btn accent">재검증</button>
+    </div>
+  </div>
+
+  <!-- HERO -->
+  <div class="hero">
+    <div class="hero-stat">
+      <div class="hero-num red">2</div>
+      <div class="hero-label">Errors</div>
+    </div>
+    <div class="hero-stat">
+      <div class="hero-num amber">3</div>
+      <div class="hero-label">Warnings</div>
+    </div>
+    <div class="hero-stat">
+      <div class="hero-num green">42</div>
+      <div class="hero-label">Passed</div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- DRAWER -->
+    <div class="drawer">
+      <div class="drawer-tabs">
+        <div class="drawer-tab active">이슈 <span class="badge badge-red">5</span></div>
+        <div class="drawer-tab">규칙</div>
+        <div class="drawer-tab">로그</div>
+      </div>
+      <div class="drawer-divider"></div>
+
+      <div class="drawer-content">
+        <div class="issue-card error active">
+          <div class="ic-top">
+            <span class="ic-sev error">ERROR</span>
+            <span class="ic-cell">F16</span>
+            <span class="ic-rule">합계 검증</span>
+          </div>
+          <div class="ic-desc">자재비 소계 불일치</div>
+          <div class="ic-vals">
+            <span><span class="label">현재</span> <span class="v-red">400,000</span></span>
+            <span><span class="label">기대</span> <span class="v-green">487,000</span></span>
+          </div>
+        </div>
+
+        <div class="issue-card error">
+          <div class="ic-top">
+            <span class="ic-sev error">ERROR</span>
+            <span class="ic-cell">F26</span>
+            <span class="ic-rule">합계 검증</span>
+          </div>
+          <div class="ic-desc">인건비 소계 불일치</div>
+          <div class="ic-vals">
+            <span><span class="label">현재</span> <span class="v-red">3,200,000</span></span>
+            <span><span class="label">기대</span> <span class="v-green">3,630,000</span></span>
+          </div>
+        </div>
+
+        <div class="issue-card warning">
+          <div class="ic-top">
+            <span class="ic-sev warning">WARN</span>
+            <span class="ic-cell">E11</span>
+            <span class="ic-rule">이상치</span>
+          </div>
+          <div class="ic-desc">윤활유 단가 350,000원 — 평균 대비 312%</div>
+        </div>
+
+        <div class="issue-card warning">
+          <div class="ic-top">
+            <span class="ic-sev warning">WARN</span>
+            <span class="ic-cell">B14</span>
+            <span class="ic-rule">중복</span>
+          </div>
+          <div class="ic-desc">베어링 6205-2RS 동일 수량·금액 2회 청구</div>
+        </div>
+
+        <div class="issue-card warning">
+          <div class="ic-top">
+            <span class="ic-sev warning">WARN</span>
+            <span class="ic-cell">D21</span>
+            <span class="ic-rule">범위</span>
+          </div>
+          <div class="ic-desc">박기사 투입 26h — 24h 한도 초과</div>
+        </div>
+      </div>
+
+      <!-- Rules as chips -->
+      <div class="rules-toggle-bar">
+        <div class="rule-chip on"><span class="dot err"></span> 합계 검증</div>
+        <div class="rule-chip on"><span class="dot wrn"></span> 이상치 (3σ)</div>
+        <div class="rule-chip on"><span class="dot wrn"></span> 중복 검출</div>
+        <div class="rule-chip on"><span class="dot ok"></span> 필수 항목</div>
+        <div class="rule-chip"><span class="dot"></span> 범위 초과</div>
+      </div>
+    </div>
+
+    <!-- GRID -->
+    <div class="grid-wrap">
+      <div class="sheet-strip">
+        <div class="stab active">5월_정산</div>
+        <div class="stab">4월_정산</div>
+        <div class="stab">단가기준표</div>
+        <span class="info">39 rows × 7 cols</span>
+      </div>
+
+      <div class="grid-scroll">
+        <table class="g">
+          <thead>
+            <tr>
+              <th class="corner"></th>
+              <th style="min-width:48px">A</th>
+              <th style="min-width:190px">B</th>
+              <th style="min-width:170px">C</th>
+              <th style="min-width:90px">D</th>
+              <th style="min-width:110px">E</th>
+              <th style="min-width:120px">F</th>
+              <th style="min-width:130px">G</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="rn">1</td>
+              <td class="ct" colspan="3">정비 비용정산서 (2026년 5월)</td>
+              <td></td><td></td><td></td><td></td>
+            </tr>
+            <tr>
+              <td class="rn">2</td>
+              <td class="cl">정산일:</td>
+              <td>2026-05-03</td>
+              <td></td>
+              <td class="cl">부서:</td>
+              <td>인프라팀</td>
+              <td class="cl">공사번호:</td>
+              <td style="font-family:'SF Mono',monospace;font-size:11px;color:var(--dim);">MO-2026-0503</td>
+            </tr>
+            <tr>
+              <td class="rn">3</td>
+              <td class="cl">설비코드:</td>
+              <td>CH-001</td>
+              <td style="color:var(--dim);">Chiller #1</td>
+              <td class="cl">정비유형:</td>
+              <td>사후정비</td>
+              <td class="cl">작업구역:</td>
+              <td>유틸동 B1</td>
+            </tr>
+            <tr>
+              <td class="rn">4</td>
+              <td class="cl">작성자:</td>
+              <td>홍길동</td>
+              <td></td>
+              <td class="cl">승인자:</td>
+              <td>김부장</td>
+              <td></td><td></td>
+            </tr>
+            <tr><td class="rn">5</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+
+            <!-- 자재비 섹션 -->
+            <tr class="rs">
+              <td class="rn">6</td>
+              <td colspan="7">자재비</td>
+            </tr>
+            <tr>
+              <td class="rn">7</td>
+              <td class="ch">No.</td>
+              <td class="ch">자재명</td>
+              <td class="ch">규격/사양</td>
+              <td class="ch">수량</td>
+              <td class="ch">단가(원)</td>
+              <td class="ch">금액(원)</td>
+              <td class="ch">비고</td>
+            </tr>
+            <tr>
+              <td class="rn">8</td>
+              <td class="cn">1</td>
+              <td>베어링 6205-2RS</td>
+              <td style="color:var(--dim);">NSK / 내경25mm</td>
+              <td class="cn">4</td>
+              <td class="cn">15,000</td>
+              <td class="cn">60,000</td>
+              <td style="color:var(--dim);">정기교체</td>
+            </tr>
+            <tr>
+              <td class="rn">9</td>
+              <td class="cn">2</td>
+              <td>V벨트 B-52</td>
+              <td style="color:var(--dim);">반도 / 1321mm</td>
+              <td class="cn">2</td>
+              <td class="cn">8,500</td>
+              <td class="cn">17,000</td>
+              <td></td>
+            </tr>
+            <tr>
+              <td class="rn">10</td>
+              <td class="cn">3</td>
+              <td>메카니컬씰 MG1-35</td>
+              <td style="color:var(--dim);">Burgmann / 35mm</td>
+              <td class="cn">1</td>
+              <td class="cn">285,000</td>
+              <td class="cn">285,000</td>
+              <td style="color:var(--dim);">긴급 수입</td>
+            </tr>
+            <tr>
+              <td class="rn">11</td>
+              <td class="cn">4</td>
+              <td>윤활유 Mobil SHC 630</td>
+              <td style="color:var(--dim);">ISO VG 220 / 20L</td>
+              <td class="cn">1</td>
+              <td class="cn cw">350,000</td>
+              <td class="cn">350,000</td>
+              <td style="color:var(--amber);">단가확인 필요</td>
+            </tr>
+            <tr>
+              <td class="rn">12</td>
+              <td class="cn">5</td>
+              <td>가스켓 Non-Asbestos</td>
+              <td style="color:var(--dim);">Klinger / DN50</td>
+              <td class="cn">6</td>
+              <td class="cn">12,000</td>
+              <td class="cn">72,000</td>
+              <td></td>
+            </tr>
+            <tr>
+              <td class="rn">13</td>
+              <td class="cn">6</td>
+              <td>커플링 L-100</td>
+              <td style="color:var(--dim);">Lovejoy / 1-1/8"</td>
+              <td class="cn">2</td>
+              <td class="cn">45,000</td>
+              <td class="cn">90,000</td>
+              <td></td>
+            </tr>
+            <!-- 중복 행 -->
+            <tr>
+              <td class="rn">14</td>
+              <td class="cn cd">7</td>
+              <td class="cd">베어링 6205-2RS</td>
+              <td class="cd" style="color:var(--dim);">NSK / 내경25mm</td>
+              <td class="cn cd">4</td>
+              <td class="cn cd">15,000</td>
+              <td class="cn cd">60,000</td>
+              <td class="cd" style="color:var(--purple);">중복 의심</td>
+            </tr>
+            <tr>
+              <td class="rn">15</td>
+              <td class="cn">8</td>
+              <td>오링 P-30</td>
+              <td style="color:var(--dim);">NOK / Viton</td>
+              <td class="cn">10</td>
+              <td class="cn">3,500</td>
+              <td class="cn">35,000</td>
+              <td></td>
+            </tr>
+            <!-- 소계 - 오류 -->
+            <tr class="rt">
+              <td class="rn">16</td>
+              <td></td>
+              <td class="cb">소계</td>
+              <td></td><td></td><td></td>
+              <td class="cn ce cs">400,000</td>
+              <td></td>
+            </tr>
+            <tr><td class="rn">17</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+
+            <!-- 인건비 -->
+            <tr class="rs">
+              <td class="rn">18</td>
+              <td colspan="7">인건비</td>
+            </tr>
+            <tr>
+              <td class="rn">19</td>
+              <td class="ch">No.</td>
+              <td class="ch">구분</td>
+              <td class="ch">성명/업체</td>
+              <td class="ch">시간(h)</td>
+              <td class="ch">단가(원/h)</td>
+              <td class="ch">금액(원)</td>
+              <td class="ch">비고</td>
+            </tr>
+            <tr>
+              <td class="rn">20</td>
+              <td class="cn">1</td>
+              <td>내부</td>
+              <td>김철수</td>
+              <td class="cn">8</td>
+              <td class="cn">30,000</td>
+              <td class="cn">240,000</td>
+              <td style="color:var(--dim);">주간</td>
+            </tr>
+            <tr>
+              <td class="rn">21</td>
+              <td class="cn">2</td>
+              <td>외주</td>
+              <td>(주)정비테크 박기사</td>
+              <td class="cn cw">26</td>
+              <td class="cn">45,000</td>
+              <td class="cn">1,170,000</td>
+              <td style="color:var(--amber);">긴급 투입</td>
+            </tr>
+            <tr>
+              <td class="rn">22</td>
+              <td class="cn">3</td>
+              <td>내부</td>
+              <td>이영희</td>
+              <td class="cn">10</td>
+              <td class="cn">30,000</td>
+              <td class="cn">300,000</td>
+              <td style="color:var(--dim);">야간 포함</td>
+            </tr>
+            <tr>
+              <td class="rn">23</td>
+              <td class="cn">4</td>
+              <td>외주</td>
+              <td>(주)정비테크 최기사</td>
+              <td class="cn">16</td>
+              <td class="cn">45,000</td>
+              <td class="cn">720,000</td>
+              <td></td>
+            </tr>
+            <tr>
+              <td class="rn">24</td>
+              <td class="cn">5</td>
+              <td>내부</td>
+              <td>박인프라</td>
+              <td class="cn">8</td>
+              <td class="cn">30,000</td>
+              <td class="cn">240,000</td>
+              <td style="color:var(--dim);">지원</td>
+            </tr>
+            <tr>
+              <td class="rn">25</td>
+              <td class="cn">6</td>
+              <td>외주</td>
+              <td>(주)삼성ENG</td>
+              <td class="cn">12</td>
+              <td class="cn">65,000</td>
+              <td class="cn">780,000</td>
+              <td style="color:var(--dim);">전문업체</td>
+            </tr>
+            <tr class="rt">
+              <td class="rn">26</td>
+              <td></td>
+              <td class="cb">소계</td>
+              <td></td><td></td><td></td>
+              <td class="cn ce">3,200,000</td>
+              <td></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Floating hints -->
+      <div class="float-info">
+        <div class="float-chip">클릭 시 Excel 셀 이동</div>
+        <div class="float-chip"><kbd>+</kbd> 규칙 추가</div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

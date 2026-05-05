@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>Excel Validator — Frosted Glass</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=DM+Sans:wght@300;400;500;600&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg-from: #060b1f;
+  --bg-to: #150a2e;
+  --glass: rgba(255,255,255,0.04);
+  --glass-border: rgba(255,255,255,0.1);
+  --glass-hover: rgba(255,255,255,0.07);
+  --accent: #7c6cfa;
+  --accent2: #a78bfa;
+  --green: #34d399;
+  --red: #f87171;
+  --orange: #fb923c;
+  --white: #f0f0ff;
+  --muted: rgba(240,240,255,0.45);
+  --muted2: rgba(240,240,255,0.25);
+  --heading: 'Outfit', sans-serif;
+  --body: 'DM Sans', sans-serif;
+}
+
+html, body {
+  width: 1440px;
+  height: 900px;
+  overflow: hidden;
+  background: linear-gradient(135deg, var(--bg-from) 0%, var(--bg-to) 100%);
+  color: var(--white);
+  font-family: var(--body);
+  font-size: 13px;
+}
+
+/* Animated background orbs */
+body::before {
+  content: '';
+  position: fixed;
+  width: 600px; height: 600px;
+  background: radial-gradient(circle, rgba(124,108,250,0.15) 0%, transparent 70%);
+  top: -100px; left: -100px;
+  border-radius: 50%;
+  animation: orb1 12s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+body::after {
+  content: '';
+  position: fixed;
+  width: 500px; height: 500px;
+  background: radial-gradient(circle, rgba(167,139,250,0.12) 0%, transparent 70%);
+  bottom: -80px; right: -80px;
+  border-radius: 50%;
+  animation: orb2 15s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+@keyframes orb1 { from { transform: translate(0,0) scale(1); } to { transform: translate(60px, 40px) scale(1.1); } }
+@keyframes orb2 { from { transform: translate(0,0) scale(1); } to { transform: translate(-40px, -60px) scale(1.15); } }
+
+/* Glass mixin */
+.glass {
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+}
+
+/* TOP BAR */
+.topbar {
+  display: flex;
+  align-items: center;
+  height: 56px;
+  padding: 0 24px;
+  gap: 20px;
+  background: rgba(255,255,255,0.03);
+  border-bottom: 1px solid var(--glass-border);
+  backdrop-filter: blur(30px);
+  position: relative;
+  z-index: 100;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.brand-icon {
+  width: 32px;
+  height: 32px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(124,108,250,0.4);
+}
+.brand-name {
+  font-family: var(--heading);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--white);
+}
+.topbar-sep { width: 1px; height: 24px; background: var(--glass-border); }
+.file-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  padding: 5px 14px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.file-chip-icon { color: var(--accent2); font-size: 14px; }
+.badges { display: flex; gap: 8px; margin-left: auto; }
+.badge {
+  padding: 5px 14px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.badge-err {
+  background: rgba(248,113,113,0.15);
+  border: 1px solid rgba(248,113,113,0.3);
+  color: var(--red);
+}
+.badge-warn {
+  background: rgba(251,146,60,0.15);
+  border: 1px solid rgba(251,146,60,0.3);
+  color: var(--orange);
+}
+.badge-dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+.actions { display: flex; gap: 8px; }
+.btn {
+  font-family: var(--body);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 7px 18px;
+  border-radius: 10px;
+  border: 1px solid var(--glass-border);
+  background: var(--glass);
+  color: var(--muted);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn:hover { background: var(--glass-hover); color: var(--white); border-color: rgba(255,255,255,0.2); }
+.btn-primary {
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  border-color: transparent;
+  color: #fff;
+  box-shadow: 0 4px 16px rgba(124,108,250,0.35);
+}
+.btn-primary:hover { box-shadow: 0 6px 24px rgba(124,108,250,0.5); transform: translateY(-1px); }
+
+/* MAIN LAYOUT */
+.layout {
+  display: flex;
+  height: calc(900px - 56px);
+  padding: 16px;
+  gap: 16px;
+}
+
+/* SIDEBAR */
+.sidebar {
+  width: 256px;
+  min-width: 256px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.sidebar-card {
+  border-radius: 16px;
+  padding: 16px;
+  position: relative;
+  overflow: hidden;
+}
+.sidebar-title {
+  font-family: var(--heading);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted2);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+.stat-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+.stat-label { font-size: 12px; color: var(--muted); }
+.stat-val { font-family: var(--heading); font-size: 18px; font-weight: 700; }
+.stat-val.err { color: var(--red); }
+.stat-val.warn { color: var(--orange); }
+.stat-val.ok { color: var(--green); }
+.stat-val.total { color: var(--white); }
+.stat-bar {
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255,255,255,0.08);
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.stat-bar-fill { height: 100%; border-radius: 2px; }
+
+.rules-card { flex: 1; overflow: hidden; display: flex; flex-direction: column; }
+.rules-inner { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.rules-inner::-webkit-scrollbar { width: 4px; }
+.rules-inner::-webkit-scrollbar-track { background: transparent; }
+.rules-inner::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 2px; }
+
+.rule-tile {
+  border-radius: 12px;
+  padding: 12px 14px;
+  transition: all 0.2s;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+}
+.rule-tile::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.rule-tile:hover::before { opacity: 1; }
+.rule-tile:hover { transform: translateY(-2px); box-shadow: 0 8px 32px rgba(0,0,0,0.3); }
+.rule-tile.err { border-color: rgba(248,113,113,0.25) !important; }
+.rule-tile.err::before { background: rgba(248,113,113,0.05); }
+.rule-tile.warn { border-color: rgba(251,146,60,0.25) !important; }
+.rule-tile.warn::before { background: rgba(251,146,60,0.05); }
+.rule-tile.ok { border-color: rgba(52,211,153,0.2) !important; }
+.rule-tile.ok::before { background: rgba(52,211,153,0.04); }
+
+.rule-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.rule-name { font-size: 13px; font-weight: 500; color: var(--white); flex: 1; }
+.toggle-pill {
+  width: 36px;
+  height: 18px;
+  border-radius: 9px;
+  background: linear-gradient(135deg, var(--accent), var(--accent2));
+  position: relative;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(124,108,250,0.4);
+}
+.toggle-pill::after {
+  content: '';
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+}
+.rule-bottom { display: flex; align-items: center; justify-content: space-between; }
+.rule-stat { font-size: 12px; }
+.rule-stat.err { color: var(--red); }
+.rule-stat.warn { color: var(--orange); }
+.rule-stat.ok { color: var(--green); }
+.rule-tag {
+  font-size: 10px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 6px;
+  letter-spacing: 0.05em;
+}
+.rule-tag.err { background: rgba(248,113,113,0.2); color: var(--red); }
+.rule-tag.warn { background: rgba(251,146,60,0.2); color: var(--orange); }
+.rule-tag.ok { background: rgba(52,211,153,0.15); color: var(--green); }
+
+/* CENTER PANEL */
+.center-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+.grid-panel {
+  flex: 1;
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.grid-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--glass-border);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.grid-title {
+  font-family: var(--heading);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--white);
+}
+.grid-meta { font-size: 12px; color: var(--muted); margin-left: auto; }
+.grid-wrapper { flex: 1; overflow: auto; }
+.grid-wrapper::-webkit-scrollbar { width: 6px; height: 6px; }
+.grid-wrapper::-webkit-scrollbar-track { background: transparent; }
+.grid-wrapper::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 3px; }
+
+.data-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+.data-grid th, .data-grid td {
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  border-right: 1px solid rgba(255,255,255,0.04);
+  padding: 0;
+  white-space: nowrap;
+}
+.col-num {
+  width: 36px;
+  text-align: center;
+  color: var(--muted2);
+  font-size: 10px;
+  padding: 6px 4px;
+  background: rgba(255,255,255,0.02);
+}
+.th-col {
+  background: rgba(255,255,255,0.04);
+  color: var(--muted);
+  font-size: 10px;
+  text-align: center;
+  padding: 7px 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: blur(10px);
+}
+.cell { padding: 7px 12px; }
+.cell-num { text-align: right; }
+.cell-center { text-align: center; }
+.cell-merged {
+  text-align: center;
+  font-family: var(--heading);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--white);
+  padding: 10px;
+  background: rgba(124,108,250,0.08) !important;
+  border-bottom: 1px solid rgba(124,108,250,0.2) !important;
+}
+.cell-meta { color: var(--muted); font-size: 11px; background: rgba(255,255,255,0.02) !important; }
+.cell-hdr {
+  background: rgba(255,255,255,0.04) !important;
+  color: var(--accent2);
+  font-weight: 600;
+  font-size: 11px;
+}
+.cell-error {
+  background: rgba(248,113,113,0.1) !important;
+  color: var(--red) !important;
+  font-weight: 600;
+  box-shadow: 0 0 0 1px rgba(248,113,113,0.4), inset 0 0 20px rgba(248,113,113,0.1);
+  animation: glow-err 2.5s ease-in-out infinite;
+}
+@keyframes glow-err {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(248,113,113,0.4), inset 0 0 20px rgba(248,113,113,0.1); }
+  50% { box-shadow: 0 0 0 2px rgba(248,113,113,0.6), inset 0 0 30px rgba(248,113,113,0.2); }
+}
+.cell-warn {
+  background: rgba(251,146,60,0.08) !important;
+  color: var(--orange) !important;
+  box-shadow: 0 0 0 1px rgba(251,146,60,0.35);
+  animation: glow-warn 3s ease-in-out infinite;
+}
+@keyframes glow-warn {
+  0%, 100% { box-shadow: 0 0 0 1px rgba(251,146,60,0.35); }
+  50% { box-shadow: 0 0 0 1px rgba(251,146,60,0.6), inset 0 0 15px rgba(251,146,60,0.1); }
+}
+.cell-dup {
+  color: rgba(240,240,255,0.5);
+  background: rgba(251,146,60,0.04) !important;
+  box-shadow: 0 0 0 1px rgba(251,146,60,0.2);
+}
+.cell-subtotal {
+  background: rgba(255,255,255,0.04) !important;
+  color: var(--white);
+  font-weight: 600;
+}
+
+/* BOTTOM PANEL */
+.bottom-panel {
+  height: 196px;
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.bottom-header {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--glass-border);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.bottom-title {
+  font-family: var(--heading);
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--white);
+}
+.pill-err {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: rgba(248,113,113,0.2);
+  color: var(--red);
+  border: 1px solid rgba(248,113,113,0.3);
+}
+.pill-warn {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 12px;
+  background: rgba(251,146,60,0.2);
+  color: var(--orange);
+  border: 1px solid rgba(251,146,60,0.3);
+}
+.hint { margin-left: auto; font-size: 11px; color: var(--muted2); }
+.issue-list { flex: 1; overflow-y: auto; }
+.issue-list::-webkit-scrollbar { width: 4px; }
+.issue-list::-webkit-scrollbar-thumb { background: var(--glass-border); border-radius: 2px; }
+.issue-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 16px;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.issue-row:hover { background: rgba(255,255,255,0.04); }
+.issue-icon {
+  width: 24px;
+  height: 24px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.icon-err { background: rgba(248,113,113,0.2); color: var(--red); border: 1px solid rgba(248,113,113,0.3); }
+.icon-warn { background: rgba(251,146,60,0.2); color: var(--orange); border: 1px solid rgba(251,146,60,0.3); }
+.issue-cell-ref {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--accent2);
+  background: rgba(124,108,250,0.12);
+  border: 1px solid rgba(124,108,250,0.2);
+  border-radius: 6px;
+  padding: 2px 8px;
+  flex-shrink: 0;
+}
+.issue-desc { font-size: 12px; color: var(--muted); flex: 1; }
+.issue-desc strong { color: var(--white); }
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div class="topbar">
+  <div class="brand">
+    <div class="brand-icon">EV</div>
+    <span class="brand-name">Excel Validator</span>
+  </div>
+  <div class="topbar-sep"></div>
+  <div class="file-chip">
+    <span class="file-chip-icon">📄</span>
+    sample_settlement.xlsx
+  </div>
+  <div class="badges">
+    <div class="badge badge-err"><span class="badge-dot"></span> 2 오류</div>
+    <div class="badge badge-warn"><span class="badge-dot"></span> 3 경고</div>
+  </div>
+  <div class="actions">
+    <button class="btn">재파싱</button>
+    <button class="btn">내보내기</button>
+    <button class="btn btn-primary">보고서 생성</button>
+  </div>
+</div>
+
+<!-- MAIN LAYOUT -->
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <!-- Stats card -->
+    <div class="glass sidebar-card" style="border-radius:16px;">
+      <div class="sidebar-title">검증 현황</div>
+      <div class="stat-row">
+        <span class="stat-label">오류</span>
+        <span class="stat-val err">2</span>
+      </div>
+      <div class="stat-bar"><div class="stat-bar-fill" style="width:40%;background:linear-gradient(90deg,#f87171,#fca5a5);"></div></div>
+      <div class="stat-row">
+        <span class="stat-label">경고</span>
+        <span class="stat-val warn">3</span>
+      </div>
+      <div class="stat-bar"><div class="stat-bar-fill" style="width:60%;background:linear-gradient(90deg,#fb923c,#fbbf24);"></div></div>
+      <div class="stat-row">
+        <span class="stat-label">통과</span>
+        <span class="stat-val ok">1</span>
+      </div>
+      <div class="stat-bar" style="margin-bottom:4px;"><div class="stat-bar-fill" style="width:20%;background:linear-gradient(90deg,#34d399,#6ee7b7);"></div></div>
+      <div style="font-size:11px;color:var(--muted2);margin-top:4px;">최종 실행: 2026-05-05 09:42</div>
+    </div>
+
+    <!-- Rules card -->
+    <div class="glass sidebar-card rules-card" style="border-radius:16px;padding:16px;">
+      <div class="sidebar-title">검증 규칙</div>
+      <div class="rules-inner">
+
+        <div class="rule-tile glass err" style="border:1px solid rgba(248,113,113,0.25);">
+          <div class="rule-top">
+            <span class="rule-name">자재비 합계 검증</span>
+            <div class="toggle-pill"></div>
+          </div>
+          <div class="rule-bottom">
+            <span class="rule-stat err">1건 적발</span>
+            <span class="rule-tag err">ERROR</span>
+          </div>
+        </div>
+
+        <div class="rule-tile glass err" style="border:1px solid rgba(248,113,113,0.25);">
+          <div class="rule-top">
+            <span class="rule-name">인건비 합계 검증</span>
+            <div class="toggle-pill"></div>
+          </div>
+          <div class="rule-bottom">
+            <span class="rule-stat err">1건 적발</span>
+            <span class="rule-tag err">ERROR</span>
+          </div>
+        </div>
+
+        <div class="rule-tile glass warn" style="border:1px solid rgba(251,146,60,0.25);">
+          <div class="rule-top">
+            <span class="rule-name">단가 이상치 (3σ)</span>
+            <div class="toggle-pill"></div>
+          </div>
+          <div class="rule-bottom">
+            <span class="rule-stat warn">1건 적발</span>
+            <span class="rule-tag warn">WARN</span>
+          </div>
+        </div>
+
+        <div class="rule-tile glass warn" style="border:1px solid rgba(251,146,60,0.25);">
+          <div class="rule-top">
+            <span class="rule-name">중복 항목 검출</span>
+            <div class="toggle-pill"></div>
+          </div>
+          <div class="rule-bottom">
+            <span class="rule-stat warn">1건 적발</span>
+            <span class="rule-tag warn">WARN</span>
+          </div>
+        </div>
+
+        <div class="rule-tile glass ok" style="border:1px solid rgba(52,211,153,0.2);">
+          <div class="rule-top">
+            <span class="rule-name">필수 항목 누락</span>
+            <div class="toggle-pill"></div>
+          </div>
+          <div class="rule-bottom">
+            <span class="rule-stat ok">0건 적발</span>
+            <span class="rule-tag ok">PASS</span>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER -->
+  <div class="center-panel">
+
+    <!-- Grid Panel -->
+    <div class="glass grid-panel">
+      <div class="grid-header">
+        <span class="grid-title">정산 데이터</span>
+        <div style="display:flex;gap:8px;margin-left:8px;">
+          <span style="font-size:11px;color:var(--muted);background:rgba(255,255,255,0.05);border-radius:6px;padding:2px 8px;">42행</span>
+          <span style="font-size:11px;color:var(--muted);background:rgba(255,255,255,0.05);border-radius:6px;padding:2px 8px;">7열</span>
+        </div>
+        <span class="grid-meta">정산서_2026_05 · 셀 클릭시 상세 확인</span>
+      </div>
+      <div class="grid-wrapper">
+        <table class="data-grid">
+          <thead>
+            <tr>
+              <th class="col-num th-col">#</th>
+              <th class="th-col">A</th>
+              <th class="th-col">B</th>
+              <th class="th-col">C</th>
+              <th class="th-col">D</th>
+              <th class="th-col">E</th>
+              <th class="th-col">F</th>
+              <th class="th-col">G</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="col-num">1</td>
+              <td colspan="7" class="cell cell-merged">정비 비용정산서 (2026년 5월)</td>
+            </tr>
+            <tr>
+              <td class="col-num">2</td>
+              <td colspan="3" class="cell cell-meta">정산일: 2026-05-03</td>
+              <td colspan="4" class="cell cell-meta">부서: 인프라팀</td>
+            </tr>
+            <tr>
+              <td class="col-num">3</td>
+              <td colspan="4" class="cell cell-meta">설비: CH-001 Chiller #1</td>
+              <td colspan="3" class="cell cell-meta">정비유형: 사후정비</td>
+            </tr>
+            <tr>
+              <td class="col-num">4</td>
+              <td colspan="7" class="cell" style="height:14px;"></td>
+            </tr>
+            <tr>
+              <td class="col-num">5</td>
+              <td class="cell cell-hdr">No.</td>
+              <td class="cell cell-hdr">자재명</td>
+              <td class="cell cell-hdr">규격/사양</td>
+              <td class="cell cell-hdr">수량</td>
+              <td class="cell cell-hdr cell-num">단가(원)</td>
+              <td class="cell cell-hdr cell-num">금액(원)</td>
+              <td class="cell cell-hdr">비고</td>
+            </tr>
+            <tr>
+              <td class="col-num">6</td>
+              <td class="cell cell-center">1</td>
+              <td class="cell">베어링 6205</td>
+              <td class="cell">NSK</td>
+              <td class="cell cell-num">4</td>
+              <td class="cell cell-num">15,000</td>
+              <td class="cell cell-num">60,000</td>
+              <td class="cell">정기교체</td>
+            </tr>
+            <tr>
+              <td class="col-num">7</td>
+              <td class="cell cell-center">2</td>
+              <td class="cell">V벨트 B-52</td>
+              <td class="cell">반도</td>
+              <td class="cell cell-num">2</td>
+              <td class="cell cell-num">8,500</td>
+              <td class="cell cell-num">17,000</td>
+              <td class="cell"></td>
+            </tr>
+            <tr>
+              <td class="col-num">8</td>
+              <td class="cell cell-center">3</td>
+              <td class="cell">윤활유 10L</td>
+              <td class="cell">SK ZIC</td>
+              <td class="cell cell-num">1</td>
+              <td class="cell cell-num cell-warn">350,000 ⚠</td>
+              <td class="cell cell-num">350,000</td>
+              <td class="cell cell-warn">단가확인</td>
+            </tr>
+            <tr>
+              <td class="col-num">9</td>
+              <td class="cell cell-center cell-dup">4</td>
+              <td class="cell cell-dup">베어링 6205</td>
+              <td class="cell cell-dup">NSK</td>
+              <td class="cell cell-num cell-dup">4</td>
+              <td class="cell cell-num cell-dup">15,000</td>
+              <td class="cell cell-num cell-dup">60,000</td>
+              <td class="cell cell-dup">추가요청 ⚠</td>
+            </tr>
+            <tr>
+              <td class="col-num">10</td>
+              <td colspan="5" class="cell cell-subtotal">소계</td>
+              <td class="cell cell-num cell-error">400,000 ✗</td>
+              <td class="cell cell-subtotal"></td>
+            </tr>
+            <tr>
+              <td class="col-num">11</td>
+              <td colspan="7" class="cell" style="height:14px;"></td>
+            </tr>
+            <tr>
+              <td class="col-num">12</td>
+              <td colspan="7" class="cell cell-hdr" style="color:var(--muted);font-size:11px;">인건비 명세</td>
+            </tr>
+            <tr>
+              <td class="col-num">13</td>
+              <td class="cell cell-hdr">구분</td>
+              <td class="cell cell-hdr">성명</td>
+              <td class="cell cell-hdr">직급</td>
+              <td class="cell cell-hdr">작업시간</td>
+              <td class="cell cell-hdr cell-num">단가(원/h)</td>
+              <td class="cell cell-hdr cell-num">금액(원)</td>
+              <td class="cell cell-hdr">비고</td>
+            </tr>
+            <tr>
+              <td class="col-num">14</td>
+              <td class="cell">일반정비</td>
+              <td class="cell">박기사</td>
+              <td class="cell">기사</td>
+              <td class="cell cell-num cell-warn">26h ⚠</td>
+              <td class="cell cell-num">55,000</td>
+              <td class="cell cell-num">1,430,000</td>
+              <td class="cell cell-warn">시간초과</td>
+            </tr>
+            <tr>
+              <td class="col-num">15</td>
+              <td class="cell">전기점검</td>
+              <td class="cell">김전기</td>
+              <td class="cell">기술사</td>
+              <td class="cell cell-num">20h</td>
+              <td class="cell cell-num">110,000</td>
+              <td class="cell cell-num">2,200,000</td>
+              <td class="cell"></td>
+            </tr>
+            <tr>
+              <td class="col-num">16</td>
+              <td colspan="5" class="cell cell-subtotal">소계</td>
+              <td class="cell cell-num cell-error">3,200,000 ✗</td>
+              <td class="cell cell-subtotal"></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Bottom Issues Panel -->
+    <div class="glass bottom-panel">
+      <div class="bottom-header">
+        <span class="bottom-title">이슈 목록</span>
+        <span class="pill-err">2 오류</span>
+        <span class="pill-warn">3 경고</span>
+        <span class="hint">클릭시 해당 셀 이동</span>
+      </div>
+      <div class="issue-list">
+        <div class="issue-row">
+          <div class="issue-icon icon-err">✕</div>
+          <span class="issue-cell-ref">F10</span>
+          <span class="issue-desc">자재비 합계 불일치 — 표시값 <strong>400,000</strong> ≠ 계산값 <strong>487,000</strong> (차이: 87,000원)</span>
+        </div>
+        <div class="issue-row">
+          <div class="issue-icon icon-err">✕</div>
+          <span class="issue-cell-ref">F20</span>
+          <span class="issue-desc">인건비 합계 불일치 — 표시값 <strong>3,200,000</strong> ≠ 계산값 <strong>3,630,000</strong> (차이: 430,000원)</span>
+        </div>
+        <div class="issue-row">
+          <div class="issue-icon icon-warn">!</div>
+          <span class="issue-cell-ref">E8</span>
+          <span class="issue-desc">단가 이상치 — 윤활유 <strong>350,000원</strong> (평균 112,000 대비 <strong>312%</strong>)</span>
+        </div>
+        <div class="issue-row">
+          <div class="issue-icon icon-warn">!</div>
+          <span class="issue-cell-ref">A9</span>
+          <span class="issue-desc">중복 항목 — 베어링 6205 동일 수량/금액 <strong>2회 청구</strong></span>
+        </div>
+        <div class="issue-row">
+          <div class="issue-icon icon-warn">!</div>
+          <span class="issue-cell-ref">D14</span>
+          <span class="issue-desc">근무시간 초과 — 박기사 <strong>26h</strong> (24h 한도 초과)</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

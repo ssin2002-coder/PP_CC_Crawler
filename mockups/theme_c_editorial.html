@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>Excel Validator — Editorial</title>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=Source+Sans+3:wght@300;400;600;700&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --paper: #f5f0eb;
+  --paper2: #ede8e1;
+  --paper3: #e8e1d8;
+  --ink: #1a1614;
+  --ink2: #3a342e;
+  --ink3: #6b6058;
+  --ink4: #9a9088;
+  --coral: #e8553d;
+  --coral-light: rgba(232,85,61,0.08);
+  --coral-pale: rgba(232,85,61,0.15);
+  --gold: #c4962a;
+  --gold-light: rgba(196,150,42,0.12);
+  --forest: #2d5a3d;
+  --cream1: #faf6f1;
+  --cream2: #f2ece3;
+  --serif: 'Playfair Display', Georgia, serif;
+  --sans: 'Source Sans 3', 'Helvetica Neue', sans-serif;
+  --border: #d4ccc4;
+  --border2: #c0b8ae;
+}
+
+html, body {
+  width: 1440px;
+  height: 900px;
+  overflow: hidden;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* TOP BAR — newspaper masthead style */
+.masthead {
+  height: 52px;
+  background: var(--ink);
+  display: flex;
+  align-items: center;
+  padding: 0 28px;
+  gap: 0;
+}
+.masthead-brand {
+  font-family: var(--serif);
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--paper);
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+.masthead-rule {
+  width: 1px;
+  height: 28px;
+  background: rgba(245,240,235,0.2);
+  margin: 0 20px;
+}
+.masthead-file {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: rgba(245,240,235,0.55);
+  font-style: italic;
+}
+.masthead-badges { display: flex; gap: 8px; margin-left: auto; }
+.badge {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 4px 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.badge-err { background: var(--coral); color: #fff; }
+.badge-warn { background: transparent; color: var(--gold); border: 1px solid var(--gold); }
+.masthead-actions { display: flex; gap: 8px; margin-left: 20px; }
+.btn {
+  font-family: var(--sans);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 16px;
+  cursor: pointer;
+  border: 1px solid rgba(245,240,235,0.3);
+  background: transparent;
+  color: rgba(245,240,235,0.7);
+  letter-spacing: 0.03em;
+  transition: all 0.15s;
+}
+.btn:hover { background: rgba(245,240,235,0.1); color: var(--paper); }
+.btn-primary { background: var(--coral); border-color: var(--coral); color: #fff; }
+.btn-primary:hover { background: #d44028; border-color: #d44028; }
+
+/* Dateline bar */
+.dateline {
+  height: 26px;
+  background: var(--paper2);
+  border-bottom: 2px solid var(--ink);
+  border-top: 1px solid var(--border2);
+  display: flex;
+  align-items: center;
+  padding: 0 28px;
+  gap: 20px;
+}
+.dateline-item {
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--ink3);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.dateline-sep { color: var(--border2); }
+
+/* MAIN LAYOUT */
+.layout {
+  display: flex;
+  height: calc(900px - 52px - 26px);
+}
+
+/* SIDEBAR */
+.sidebar {
+  width: 280px;
+  min-width: 280px;
+  background: var(--cream1);
+  border-right: 2px solid var(--ink);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.sidebar-masthead {
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--paper2);
+}
+.sidebar-section-label {
+  font-family: var(--sans);
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--coral);
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+.sidebar-headline {
+  font-family: var(--serif);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ink);
+  line-height: 1.2;
+}
+.sidebar-sub {
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--ink3);
+  margin-top: 4px;
+  font-style: italic;
+}
+.sidebar-stats-bar {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  border-bottom: 1px solid var(--border);
+}
+.stat-cell {
+  padding: 10px 12px;
+  border-right: 1px solid var(--border);
+  text-align: center;
+}
+.stat-cell:last-child { border-right: none; }
+.stat-num {
+  font-family: var(--serif);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+  display: block;
+}
+.stat-num.err { color: var(--coral); }
+.stat-num.warn { color: var(--gold); }
+.stat-num.ok { color: var(--forest); }
+.stat-label {
+  font-family: var(--sans);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink4);
+  margin-top: 2px;
+  display: block;
+}
+
+.rules-section { flex: 1; overflow-y: auto; }
+.rules-section::-webkit-scrollbar { width: 3px; }
+.rules-section::-webkit-scrollbar-thumb { background: var(--border2); }
+.rule-entry {
+  border-bottom: 1px solid var(--border);
+  padding: 14px 20px;
+  position: relative;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.rule-entry:hover { background: var(--paper2); }
+.rule-entry.err { padding-left: 28px; }
+.rule-entry.warn { padding-left: 28px; }
+.rule-entry::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+}
+.rule-entry.err::before { background: var(--coral); }
+.rule-entry.warn::before { background: var(--gold); }
+.rule-entry.ok::before { background: var(--forest); }
+.rule-idx {
+  font-family: var(--serif);
+  font-size: 32px;
+  font-weight: 700;
+  color: var(--border2);
+  line-height: 1;
+  float: left;
+  margin-right: 10px;
+  margin-top: -4px;
+}
+.rule-body { overflow: hidden; }
+.rule-title {
+  font-family: var(--sans);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  margin-bottom: 3px;
+}
+.rule-meta { display: flex; align-items: center; gap: 8px; }
+.rule-toggle {
+  width: 28px;
+  height: 14px;
+  background: var(--ink);
+  border-radius: 7px;
+  position: relative;
+  cursor: pointer;
+}
+.rule-toggle::after {
+  content: '';
+  position: absolute;
+  right: 2px;
+  top: 2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--paper);
+}
+.rule-status {
+  font-family: var(--sans);
+  font-size: 11px;
+}
+.rule-status.err { color: var(--coral); font-weight: 700; }
+.rule-status.warn { color: var(--gold); font-weight: 700; }
+.rule-status.ok { color: var(--forest); }
+.annotation-mark {
+  position: absolute;
+  right: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 18px;
+}
+.annotation-mark.err { color: var(--coral); }
+.annotation-mark.warn { color: var(--gold); }
+
+/* CENTER PANEL */
+.center-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--paper);
+  overflow: hidden;
+}
+.section-header {
+  display: flex;
+  align-items: baseline;
+  padding: 12px 24px 8px;
+  border-bottom: 1px solid var(--border);
+  gap: 16px;
+}
+.section-title {
+  font-family: var(--serif);
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.section-sub {
+  font-family: var(--sans);
+  font-size: 11px;
+  color: var(--ink4);
+  font-style: italic;
+}
+
+/* DATA GRID */
+.grid-wrapper {
+  flex: 1;
+  overflow: auto;
+  padding: 0;
+}
+.grid-wrapper::-webkit-scrollbar { width: 8px; height: 8px; }
+.grid-wrapper::-webkit-scrollbar-track { background: var(--paper2); }
+.grid-wrapper::-webkit-scrollbar-thumb { background: var(--border2); }
+
+.data-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--sans);
+  font-size: 12.5px;
+}
+.data-grid th, .data-grid td {
+  border: 1px solid var(--border);
+  padding: 0;
+}
+.col-num {
+  width: 32px;
+  text-align: center;
+  font-size: 10px;
+  color: var(--ink4);
+  background: var(--paper2) !important;
+  padding: 5px 4px;
+  font-family: var(--sans);
+}
+.th-col {
+  background: var(--paper3) !important;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-align: center;
+  padding: 5px 10px;
+  color: var(--ink3);
+  text-transform: uppercase;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.cell { padding: 6px 12px; background: var(--cream1); }
+.cell-num { text-align: right; }
+.cell-center { text-align: center; }
+.alt { background: var(--cream2) !important; }
+
+.cell-merged {
+  font-family: var(--serif);
+  font-size: 15px;
+  font-weight: 700;
+  text-align: center;
+  color: var(--ink);
+  padding: 10px;
+  background: var(--paper2) !important;
+  border-bottom: 2px solid var(--ink) !important;
+}
+.cell-meta {
+  background: var(--paper2) !important;
+  color: var(--ink3);
+  font-size: 11px;
+  font-style: italic;
+}
+.cell-hdr {
+  background: var(--paper3) !important;
+  font-weight: 700;
+  font-size: 11px;
+  color: var(--ink2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 2px solid var(--ink3) !important;
+}
+.cell-subtotal {
+  background: var(--paper2) !important;
+  font-weight: 700;
+  color: var(--ink2);
+  font-family: var(--sans);
+}
+
+/* Coral underline error style */
+.cell-error {
+  background: var(--coral-light) !important;
+  font-weight: 700;
+  color: var(--coral) !important;
+  text-decoration: underline;
+  text-decoration-color: var(--coral);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 3px;
+  position: relative;
+}
+.cell-error::after {
+  content: '✕';
+  margin-left: 4px;
+  font-size: 10px;
+}
+.cell-warn {
+  background: var(--gold-light) !important;
+  color: var(--gold) !important;
+  font-weight: 600;
+  border-color: rgba(196,150,42,0.4) !important;
+}
+.cell-dup {
+  color: var(--ink3);
+  background: rgba(196,150,42,0.06) !important;
+  text-decoration: underline dotted var(--gold);
+}
+
+/* Decorative divider */
+.decor-line {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border2) 20%, var(--border2) 80%, transparent);
+  margin: 0;
+}
+
+/* BOTTOM PANEL */
+.bottom-panel {
+  border-top: 2px solid var(--ink);
+  background: var(--cream2);
+  height: 196px;
+  display: flex;
+  flex-direction: column;
+}
+.bottom-header {
+  display: flex;
+  align-items: baseline;
+  padding: 10px 24px 8px;
+  border-bottom: 1px solid var(--border);
+  gap: 16px;
+}
+.bottom-headline {
+  font-family: var(--serif);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.bottom-count {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.bottom-count.err { color: var(--coral); }
+.bottom-count.warn { color: var(--gold); }
+.bottom-hint { margin-left: auto; font-size: 11px; color: var(--ink4); font-style: italic; }
+.issue-list { flex: 1; overflow-y: auto; }
+.issue-list::-webkit-scrollbar { width: 4px; }
+.issue-list::-webkit-scrollbar-thumb { background: var(--border2); }
+.issue-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 8px 24px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.issue-row:hover { background: var(--paper2); }
+.issue-marker {
+  width: 4px;
+  height: 100%;
+  min-height: 18px;
+  flex-shrink: 0;
+  margin-top: 3px;
+  align-self: stretch;
+}
+.issue-marker.err { background: var(--coral); }
+.issue-marker.warn { background: var(--gold); }
+.issue-type {
+  font-family: var(--sans);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding-top: 1px;
+  min-width: 48px;
+}
+.issue-type.err { color: var(--coral); }
+.issue-type.warn { color: var(--gold); }
+.issue-cell-ref {
+  font-family: var(--sans);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink2);
+  background: var(--paper2);
+  border: 1px solid var(--border2);
+  padding: 1px 7px;
+  min-width: 36px;
+  text-align: center;
+}
+.issue-text {
+  font-family: var(--sans);
+  font-size: 12px;
+  color: var(--ink3);
+  flex: 1;
+  line-height: 1.4;
+}
+.issue-text strong { color: var(--ink); }
+.editorial-note {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 11px;
+  color: var(--ink4);
+  margin-left: auto;
+  white-space: nowrap;
+}
+</style>
+</head>
+<body>
+
+<!-- MASTHEAD -->
+<div class="masthead">
+  <div class="masthead-brand">Excel Validator</div>
+  <div class="masthead-rule"></div>
+  <div class="masthead-file">sample_settlement.xlsx</div>
+  <div class="masthead-badges">
+    <span class="badge badge-err">오류 2</span>
+    <span class="badge badge-warn">경고 3</span>
+  </div>
+  <div class="masthead-actions">
+    <button class="btn">재파싱</button>
+    <button class="btn">내보내기</button>
+    <button class="btn btn-primary">보고서 생성</button>
+  </div>
+</div>
+
+<!-- DATELINE -->
+<div class="dateline">
+  <span class="dateline-item">인프라팀</span>
+  <span class="dateline-sep">·</span>
+  <span class="dateline-item">정비 비용정산</span>
+  <span class="dateline-sep">·</span>
+  <span class="dateline-item">2026년 5월호</span>
+  <span class="dateline-sep">·</span>
+  <span class="dateline-item">검증 완료: 2026-05-05</span>
+  <span class="dateline-sep">·</span>
+  <span class="dateline-item" style="color:var(--coral);">검증 실패 — 수정 필요</span>
+</div>
+
+<!-- MAIN LAYOUT -->
+<div class="layout">
+
+  <!-- SIDEBAR -->
+  <div class="sidebar">
+    <div class="sidebar-masthead">
+      <div class="sidebar-section-label">검증 규칙</div>
+      <div class="sidebar-headline">5개 규칙 활성</div>
+      <div class="sidebar-sub">최종 실행: 2026-05-05 09:42</div>
+    </div>
+
+    <div class="sidebar-stats-bar">
+      <div class="stat-cell">
+        <span class="stat-num err">2</span>
+        <span class="stat-label">오류</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-num warn">3</span>
+        <span class="stat-label">경고</span>
+      </div>
+      <div class="stat-cell">
+        <span class="stat-num ok">1</span>
+        <span class="stat-label">통과</span>
+      </div>
+    </div>
+
+    <div class="rules-section">
+
+      <div class="rule-entry err">
+        <div class="rule-idx">01</div>
+        <div class="rule-body">
+          <div class="rule-title">자재비 합계 검증</div>
+          <div class="rule-meta">
+            <div class="rule-toggle"></div>
+            <span class="rule-status err">1건 적발</span>
+          </div>
+        </div>
+        <span class="annotation-mark err">✕</span>
+      </div>
+
+      <div class="rule-entry err">
+        <div class="rule-idx">02</div>
+        <div class="rule-body">
+          <div class="rule-title">인건비 합계 검증</div>
+          <div class="rule-meta">
+            <div class="rule-toggle"></div>
+            <span class="rule-status err">1건 적발</span>
+          </div>
+        </div>
+        <span class="annotation-mark err">✕</span>
+      </div>
+
+      <div class="rule-entry warn">
+        <div class="rule-idx">03</div>
+        <div class="rule-body">
+          <div class="rule-title">단가 이상치 (3σ)</div>
+          <div class="rule-meta">
+            <div class="rule-toggle"></div>
+            <span class="rule-status warn">1건 적발</span>
+          </div>
+        </div>
+        <span class="annotation-mark warn">△</span>
+      </div>
+
+      <div class="rule-entry warn">
+        <div class="rule-idx">04</div>
+        <div class="rule-body">
+          <div class="rule-title">중복 항목 검출</div>
+          <div class="rule-meta">
+            <div class="rule-toggle"></div>
+            <span class="rule-status warn">1건 적발</span>
+          </div>
+        </div>
+        <span class="annotation-mark warn">△</span>
+      </div>
+
+      <div class="rule-entry ok">
+        <div class="rule-idx">05</div>
+        <div class="rule-body">
+          <div class="rule-title">필수 항목 누락</div>
+          <div class="rule-meta">
+            <div class="rule-toggle"></div>
+            <span class="rule-status ok">0건 적발</span>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- CENTER -->
+  <div class="center-panel">
+
+    <div class="section-header">
+      <span class="section-title">정산 데이터 그리드</span>
+      <span class="section-sub">42행 · 7열 · 정산서_2026_05</span>
+      <span style="margin-left:auto;font-size:11px;color:var(--ink4);font-style:italic;">* 붉은 밑줄 = 오류 | 황금 테두리 = 경고</span>
+    </div>
+
+    <div class="grid-wrapper">
+      <table class="data-grid">
+        <thead>
+          <tr>
+            <th class="col-num th-col">#</th>
+            <th class="th-col">A</th>
+            <th class="th-col">B</th>
+            <th class="th-col">C</th>
+            <th class="th-col">D</th>
+            <th class="th-col">E</th>
+            <th class="th-col">F</th>
+            <th class="th-col">G</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="col-num">1</td>
+            <td colspan="7" class="cell cell-merged">정비 비용정산서 (2026년 5월)</td>
+          </tr>
+          <tr>
+            <td class="col-num">2</td>
+            <td colspan="3" class="cell cell-meta">정산일: 2026-05-03</td>
+            <td colspan="4" class="cell cell-meta">부서: 인프라팀</td>
+          </tr>
+          <tr>
+            <td class="col-num">3</td>
+            <td colspan="4" class="cell cell-meta">설비: CH-001 Chiller #1</td>
+            <td colspan="3" class="cell cell-meta">정비유형: 사후정비</td>
+          </tr>
+          <tr>
+            <td class="col-num">4</td>
+            <td colspan="7" class="cell" style="height:10px;background:var(--paper2);"></td>
+          </tr>
+          <tr>
+            <td class="col-num">5</td>
+            <td class="cell cell-hdr">No.</td>
+            <td class="cell cell-hdr">자재명</td>
+            <td class="cell cell-hdr">규격/사양</td>
+            <td class="cell cell-hdr">수량</td>
+            <td class="cell cell-hdr cell-num">단가(원)</td>
+            <td class="cell cell-hdr cell-num">금액(원)</td>
+            <td class="cell cell-hdr">비고</td>
+          </tr>
+          <tr>
+            <td class="col-num">6</td>
+            <td class="cell cell-center alt">1</td>
+            <td class="cell alt">베어링 6205</td>
+            <td class="cell alt">NSK</td>
+            <td class="cell cell-num alt">4</td>
+            <td class="cell cell-num alt">15,000</td>
+            <td class="cell cell-num alt">60,000</td>
+            <td class="cell alt">정기교체</td>
+          </tr>
+          <tr>
+            <td class="col-num">7</td>
+            <td class="cell cell-center">2</td>
+            <td class="cell">V벨트 B-52</td>
+            <td class="cell">반도</td>
+            <td class="cell cell-num">2</td>
+            <td class="cell cell-num">8,500</td>
+            <td class="cell cell-num">17,000</td>
+            <td class="cell"></td>
+          </tr>
+          <tr>
+            <td class="col-num">8</td>
+            <td class="cell cell-center alt">3</td>
+            <td class="cell alt">윤활유 10L</td>
+            <td class="cell alt">SK ZIC</td>
+            <td class="cell cell-num alt">1</td>
+            <td class="cell cell-num cell-warn alt">350,000 △</td>
+            <td class="cell cell-num alt">350,000</td>
+            <td class="cell cell-warn alt">단가확인</td>
+          </tr>
+          <tr>
+            <td class="col-num">9</td>
+            <td class="cell cell-center cell-dup">4</td>
+            <td class="cell cell-dup">베어링 6205</td>
+            <td class="cell cell-dup">NSK</td>
+            <td class="cell cell-num cell-dup">4</td>
+            <td class="cell cell-num cell-dup">15,000</td>
+            <td class="cell cell-num cell-dup">60,000</td>
+            <td class="cell cell-dup">추가요청 △</td>
+          </tr>
+          <tr>
+            <td class="col-num">10</td>
+            <td colspan="5" class="cell cell-subtotal alt">소계</td>
+            <td class="cell cell-num cell-error alt">400,000</td>
+            <td class="cell cell-subtotal alt"></td>
+          </tr>
+          <tr>
+            <td class="col-num">11</td>
+            <td colspan="7" class="cell" style="height:10px;background:var(--paper2);"></td>
+          </tr>
+          <tr>
+            <td class="col-num">12</td>
+            <td colspan="7" class="cell cell-hdr" style="color:var(--ink3);font-size:11px;border-bottom:1px solid var(--border)!important;">인건비 명세</td>
+          </tr>
+          <tr>
+            <td class="col-num">13</td>
+            <td class="cell cell-hdr">구분</td>
+            <td class="cell cell-hdr">성명</td>
+            <td class="cell cell-hdr">직급</td>
+            <td class="cell cell-hdr">작업시간</td>
+            <td class="cell cell-hdr cell-num">단가(원/h)</td>
+            <td class="cell cell-hdr cell-num">금액(원)</td>
+            <td class="cell cell-hdr">비고</td>
+          </tr>
+          <tr>
+            <td class="col-num">14</td>
+            <td class="cell alt">일반정비</td>
+            <td class="cell alt">박기사</td>
+            <td class="cell alt">기사</td>
+            <td class="cell cell-num cell-warn alt">26h △</td>
+            <td class="cell cell-num alt">55,000</td>
+            <td class="cell cell-num alt">1,430,000</td>
+            <td class="cell cell-warn alt">시간초과</td>
+          </tr>
+          <tr>
+            <td class="col-num">15</td>
+            <td class="cell">전기점검</td>
+            <td class="cell">김전기</td>
+            <td class="cell">기술사</td>
+            <td class="cell cell-num">20h</td>
+            <td class="cell cell-num">110,000</td>
+            <td class="cell cell-num">2,200,000</td>
+            <td class="cell"></td>
+          </tr>
+          <tr>
+            <td class="col-num">16</td>
+            <td colspan="5" class="cell cell-subtotal alt">소계</td>
+            <td class="cell cell-num cell-error alt">3,200,000</td>
+            <td class="cell cell-subtotal alt"></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- BOTTOM PANEL -->
+    <div class="bottom-panel">
+      <div class="bottom-header">
+        <span class="bottom-headline">검증 이슈 목록</span>
+        <span class="bottom-count err">오류 2건</span>
+        <span class="bottom-count warn">경고 3건</span>
+        <span class="bottom-hint">클릭시 해당 셀로 이동</span>
+      </div>
+      <div class="issue-list">
+        <div class="issue-row">
+          <div class="issue-marker err"></div>
+          <span class="issue-type err">오류</span>
+          <span class="issue-cell-ref">F10</span>
+          <span class="issue-text">자재비 합계 불일치 — 표시값 <strong>400,000</strong> ≠ 계산값 <strong>487,000</strong> (차이: 87,000원)</span>
+          <span class="editorial-note">자재비 합계 검증</span>
+        </div>
+        <div class="issue-row">
+          <div class="issue-marker err"></div>
+          <span class="issue-type err">오류</span>
+          <span class="issue-cell-ref">F20</span>
+          <span class="issue-text">인건비 합계 불일치 — 표시값 <strong>3,200,000</strong> ≠ 계산값 <strong>3,630,000</strong> (차이: 430,000원)</span>
+          <span class="editorial-note">인건비 합계 검증</span>
+        </div>
+        <div class="issue-row">
+          <div class="issue-marker warn"></div>
+          <span class="issue-type warn">경고</span>
+          <span class="issue-cell-ref">E8</span>
+          <span class="issue-text">단가 이상치 — 윤활유 <strong>350,000원</strong> (평균 112,000 대비 <strong>312%</strong>)</span>
+          <span class="editorial-note">단가 이상치 (3σ)</span>
+        </div>
+        <div class="issue-row">
+          <div class="issue-marker warn"></div>
+          <span class="issue-type warn">경고</span>
+          <span class="issue-cell-ref">A9</span>
+          <span class="issue-text">중복 항목 — 베어링 6205 동일 수량/금액 <strong>2회 청구</strong></span>
+          <span class="editorial-note">중복 항목 검출</span>
+        </div>
+        <div class="issue-row">
+          <div class="issue-marker warn"></div>
+          <span class="issue-type warn">경고</span>
+          <span class="issue-cell-ref">D14</span>
+          <span class="issue-text">근무시간 초과 — 박기사 <strong>26h</strong> (24h 한도 초과)</span>
+          <span class="editorial-note">근무시간 규정</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

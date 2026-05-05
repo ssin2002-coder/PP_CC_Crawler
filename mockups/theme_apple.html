@@ -1,0 +1,987 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1440">
+<title>Excel Validator</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700&family=SF+Pro+Text:wght@300;400;500;600&display=swap');
+
+  :root {
+    --bg: #000000;
+    --surface: #1c1c1e;
+    --surface-2: #2c2c2e;
+    --surface-3: #3a3a3c;
+    --text-primary: #f5f5f7;
+    --text-secondary: rgba(255,255,255,0.55);
+    --text-tertiary: rgba(255,255,255,0.3);
+    --accent: #0a84ff;
+    --accent-soft: rgba(10,132,255,0.12);
+    --red: #ff453a;
+    --red-soft: rgba(255,69,58,0.15);
+    --orange: #ff9f0a;
+    --orange-soft: rgba(255,159,10,0.15);
+    --green: #30d158;
+    --green-soft: rgba(48,209,88,0.15);
+    --separator: rgba(255,255,255,0.08);
+    --radius: 14px;
+    --radius-sm: 10px;
+    --radius-xs: 8px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, 'SF Pro Display', 'SF Pro Text', 'Helvetica Neue', sans-serif;
+    background: var(--bg);
+    color: var(--text-primary);
+    height: 100vh;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ============================
+     LAYOUT — 3단 수직 구조
+     ============================ */
+  .app {
+    height: 100vh;
+    display: grid;
+    grid-template-rows: 52px 1fr;
+  }
+
+  /* ============================
+     NAV BAR — Apple 스타일 투명 바
+     ============================ */
+  .nav {
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    background: rgba(28,28,30,0.72);
+    backdrop-filter: saturate(180%) blur(20px);
+    -webkit-backdrop-filter: saturate(180%) blur(20px);
+    border-bottom: 0.5px solid var(--separator);
+    z-index: 100;
+  }
+
+  .nav-brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .nav-logo {
+    width: 28px;
+    height: 28px;
+    background: linear-gradient(135deg, var(--accent), #5e5ce6);
+    border-radius: 7px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .nav-logo svg { width: 16px; height: 16px; }
+
+  .nav-title {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  .nav-file {
+    margin-left: 16px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    font-weight: 400;
+  }
+
+  .nav-center {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    gap: 6px;
+  }
+
+  .nav-pill {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: -0.01em;
+    transition: all 0.2s;
+  }
+
+  .nav-pill.errors {
+    background: var(--red-soft);
+    color: var(--red);
+  }
+  .nav-pill.warnings {
+    background: var(--orange-soft);
+    color: var(--orange);
+  }
+  .nav-pill.ok {
+    background: var(--green-soft);
+    color: var(--green);
+  }
+
+  .nav-pill .dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  .nav-actions {
+    display: flex;
+    gap: 8px;
+  }
+
+  .btn {
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    transition: all 0.2s;
+    letter-spacing: -0.01em;
+  }
+  .btn-ghost {
+    background: transparent;
+    color: var(--text-secondary);
+    border: 0.5px solid var(--surface-3);
+  }
+  .btn-ghost:hover { background: var(--surface-2); color: var(--text-primary); }
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+  }
+  .btn-primary:hover { filter: brightness(1.15); }
+
+  /* ============================
+     MAIN CONTENT
+     ============================ */
+  .content {
+    display: grid;
+    grid-template-columns: 300px 1fr;
+    overflow: hidden;
+  }
+
+  /* ============================
+     LEFT PANEL — 규칙 + 이슈 통합
+     ============================ */
+  .left-panel {
+    background: var(--surface);
+    border-right: 0.5px solid var(--separator);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .panel-section {
+    padding: 20px;
+  }
+
+  .panel-section + .panel-section {
+    border-top: 0.5px solid var(--separator);
+  }
+
+  .section-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 14px;
+  }
+
+  /* Rule Items */
+  .rule-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .rule-item {
+    display: flex;
+    align-items: center;
+    padding: 10px 12px;
+    border-radius: var(--radius-xs);
+    cursor: pointer;
+    transition: background 0.15s;
+    gap: 10px;
+  }
+  .rule-item:hover { background: var(--surface-2); }
+  .rule-item.active { background: var(--accent-soft); }
+
+  .rule-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+  .rule-indicator.error { background: var(--red); box-shadow: 0 0 8px rgba(255,69,58,0.4); }
+  .rule-indicator.warning { background: var(--orange); box-shadow: 0 0 8px rgba(255,159,10,0.4); }
+  .rule-indicator.clear { background: var(--surface-3); }
+
+  .rule-info { flex: 1; min-width: 0; }
+  .rule-name {
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text-primary);
+    letter-spacing: -0.01em;
+  }
+  .rule-meta {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-top: 1px;
+  }
+
+  /* Toggle */
+  .toggle {
+    width: 34px;
+    height: 20px;
+    border-radius: 10px;
+    background: var(--surface-3);
+    position: relative;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.25s;
+  }
+  .toggle.on { background: var(--green); }
+  .toggle::after {
+    content: '';
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    transition: transform 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+  .toggle.on::after { transform: translateX(14px); }
+
+  /* ============================
+     ISSUES LIST
+     ============================ */
+  .issues-section {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    border-top: 0.5px solid var(--separator);
+  }
+
+  .issues-section::-webkit-scrollbar { width: 4px; }
+  .issues-section::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 2px; }
+
+  .issue-item {
+    padding: 12px;
+    border-radius: var(--radius-xs);
+    margin-bottom: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+    border: 0.5px solid transparent;
+  }
+  .issue-item:hover {
+    background: var(--surface-2);
+    border-color: var(--separator);
+  }
+  .issue-item.active {
+    background: var(--accent-soft);
+    border-color: rgba(10,132,255,0.3);
+  }
+
+  .issue-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .issue-severity {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 4px;
+    letter-spacing: 0.03em;
+  }
+  .issue-severity.error { background: var(--red-soft); color: var(--red); }
+  .issue-severity.warning { background: var(--orange-soft); color: var(--orange); }
+
+  .issue-cell {
+    font-family: 'SF Mono', 'Menlo', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    background: var(--accent-soft);
+    padding: 2px 6px;
+    border-radius: 4px;
+  }
+
+  .issue-rule {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    margin-left: auto;
+  }
+
+  .issue-desc {
+    font-size: 12px;
+    color: var(--text-secondary);
+    line-height: 1.5;
+    letter-spacing: -0.01em;
+  }
+
+  .issue-values {
+    display: flex;
+    gap: 16px;
+    margin-top: 6px;
+    font-size: 11px;
+  }
+  .issue-val-current { color: var(--red); }
+  .issue-val-expected { color: var(--green); }
+  .issue-val-label { color: var(--text-tertiary); }
+
+  /* ============================
+     RIGHT — EXCEL GRID
+     ============================ */
+  .grid-area {
+    display: flex;
+    flex-direction: column;
+    background: var(--bg);
+    overflow: hidden;
+  }
+
+  /* Sheet tabs */
+  .sheet-bar {
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    height: 40px;
+    gap: 2px;
+    border-bottom: 0.5px solid var(--separator);
+    background: var(--surface);
+  }
+
+  .sheet-tab {
+    padding: 7px 16px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-secondary);
+    border-radius: 8px 8px 0 0;
+    cursor: pointer;
+    transition: all 0.15s;
+    position: relative;
+    letter-spacing: -0.01em;
+  }
+  .sheet-tab:hover { color: var(--text-primary); }
+  .sheet-tab.active {
+    color: var(--text-primary);
+    background: var(--bg);
+  }
+  .sheet-tab.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--accent);
+    border-radius: 1px 1px 0 0;
+  }
+
+  .sheet-info {
+    margin-left: auto;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-family: 'SF Mono', monospace;
+  }
+
+  /* Grid container */
+  .grid-scroll {
+    flex: 1;
+    overflow: auto;
+    padding: 1px;
+  }
+
+  .grid-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+  .grid-scroll::-webkit-scrollbar-thumb { background: var(--surface-3); border-radius: 3px; }
+  .grid-scroll::-webkit-scrollbar-corner { background: transparent; }
+
+  /* The actual grid */
+  .excel {
+    border-collapse: collapse;
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    min-width: 100%;
+  }
+
+  .excel th {
+    background: #111113;
+    color: var(--text-tertiary);
+    font-weight: 500;
+    font-size: 10px;
+    padding: 6px 12px;
+    text-align: center;
+    border: 0.5px solid rgba(255,255,255,0.06);
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    letter-spacing: 0.02em;
+  }
+
+  .excel th.corner {
+    position: sticky;
+    left: 0;
+    z-index: 3;
+    width: 40px;
+  }
+
+  .excel td {
+    padding: 7px 12px;
+    border: 0.5px solid rgba(255,255,255,0.06);
+    color: var(--text-primary);
+    font-size: 12px;
+    white-space: nowrap;
+    letter-spacing: -0.01em;
+    transition: background 0.15s;
+  }
+
+  .excel td.rn {
+    background: #111113;
+    color: var(--text-tertiary);
+    text-align: center;
+    font-size: 10px;
+    width: 40px;
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    font-weight: 500;
+  }
+
+  .excel tr:hover td:not(.rn) { background: rgba(255,255,255,0.02); }
+
+  /* Cell states */
+  .cell-title {
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    color: var(--text-primary);
+  }
+
+  .cell-label {
+    color: var(--text-tertiary);
+    font-weight: 500;
+  }
+
+  .cell-header {
+    background: rgba(255,255,255,0.03) !important;
+    font-weight: 600;
+    font-size: 11px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .cell-num { text-align: right; font-family: 'SF Mono', 'Menlo', monospace; font-size: 12px; }
+
+  .cell-bold { font-weight: 600; }
+
+  .cell-error {
+    background: var(--red-soft) !important;
+    position: relative;
+  }
+  .cell-error::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--red);
+    border-radius: 0 0 1px 1px;
+  }
+
+  .cell-warning {
+    background: var(--orange-soft) !important;
+    position: relative;
+  }
+  .cell-warning::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: var(--orange);
+    border-radius: 0 0 1px 1px;
+  }
+
+  .cell-dup {
+    background: rgba(191,90,242,0.1) !important;
+    position: relative;
+  }
+  .cell-dup::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: #bf5af2;
+  }
+
+  .cell-selected {
+    outline: 2px solid var(--accent);
+    outline-offset: -1px;
+    border-radius: 2px;
+  }
+
+  .cell-empty { color: transparent; }
+
+  /* Subtotal row */
+  .row-subtotal td {
+    background: rgba(255,255,255,0.03) !important;
+    font-weight: 600;
+    border-top: 0.5px solid rgba(255,255,255,0.12);
+  }
+
+  /* Section header */
+  .row-section td {
+    background: rgba(10,132,255,0.04) !important;
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 13px;
+    letter-spacing: -0.01em;
+    padding: 10px 12px;
+  }
+
+  /* ============================
+     SCROLL INDICATOR
+     ============================ */
+  .scroll-hint {
+    position: absolute;
+    bottom: 20px;
+    right: 20px;
+    padding: 6px 12px;
+    background: var(--surface-2);
+    border-radius: 20px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+  }
+
+  /* ============================
+     ANIMATIONS
+     ============================ */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(4px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .rule-item { animation: fadeIn 0.4s ease backwards; }
+  .rule-item:nth-child(1) { animation-delay: 0.05s; }
+  .rule-item:nth-child(2) { animation-delay: 0.1s; }
+  .rule-item:nth-child(3) { animation-delay: 0.15s; }
+  .rule-item:nth-child(4) { animation-delay: 0.2s; }
+  .rule-item:nth-child(5) { animation-delay: 0.25s; }
+
+  .issue-item { animation: fadeIn 0.4s ease backwards; }
+  .issue-item:nth-child(1) { animation-delay: 0.1s; }
+  .issue-item:nth-child(2) { animation-delay: 0.15s; }
+  .issue-item:nth-child(3) { animation-delay: 0.2s; }
+  .issue-item:nth-child(4) { animation-delay: 0.25s; }
+  .issue-item:nth-child(5) { animation-delay: 0.3s; }
+
+  @keyframes pulse-dot {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  .rule-indicator.error, .rule-indicator.warning {
+    animation: pulse-dot 2.5s ease-in-out infinite;
+  }
+
+  /* ============================
+     연결 상태 dot
+     ============================ */
+  .status-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--green);
+    margin-right: 6px;
+    box-shadow: 0 0 6px rgba(48,209,88,0.5);
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ========= NAV BAR ========= -->
+  <nav class="nav">
+    <div class="nav-brand">
+      <div class="nav-logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round">
+          <path d="M9 12l2 2 4-4"/>
+          <rect x="3" y="3" width="18" height="18" rx="4"/>
+        </svg>
+      </div>
+      <span class="nav-title">Excel Validator</span>
+      <span class="nav-file">
+        <span class="status-dot" style="display:inline-block;vertical-align:middle;"></span>
+        sample_settlement.xlsx
+      </span>
+    </div>
+
+    <div class="nav-center">
+      <div class="nav-pill errors"><span class="dot"></span> 2 errors</div>
+      <div class="nav-pill warnings"><span class="dot"></span> 3 warnings</div>
+    </div>
+
+    <div class="nav-actions">
+      <button class="btn btn-ghost">결과 저장</button>
+      <button class="btn btn-primary">검증 재실행</button>
+    </div>
+  </nav>
+
+  <!-- ========= MAIN ========= -->
+  <div class="content">
+
+    <!-- LEFT PANEL -->
+    <div class="left-panel">
+
+      <div class="panel-section">
+        <div class="section-label">검증 규칙</div>
+        <div class="rule-list">
+          <div class="rule-item active">
+            <div class="rule-indicator error"></div>
+            <div class="rule-info">
+              <div class="rule-name">자재비 합계 검증</div>
+              <div class="rule-meta">1건 적발</div>
+            </div>
+            <div class="toggle on"></div>
+          </div>
+
+          <div class="rule-item">
+            <div class="rule-indicator error"></div>
+            <div class="rule-info">
+              <div class="rule-name">인건비 합계 검증</div>
+              <div class="rule-meta">1건 적발</div>
+            </div>
+            <div class="toggle on"></div>
+          </div>
+
+          <div class="rule-item">
+            <div class="rule-indicator warning"></div>
+            <div class="rule-info">
+              <div class="rule-name">단가 이상치 (3σ)</div>
+              <div class="rule-meta">1건 적발</div>
+            </div>
+            <div class="toggle on"></div>
+          </div>
+
+          <div class="rule-item">
+            <div class="rule-indicator warning"></div>
+            <div class="rule-info">
+              <div class="rule-name">중복 항목 검출</div>
+              <div class="rule-meta">1건 적발</div>
+            </div>
+            <div class="toggle on"></div>
+          </div>
+
+          <div class="rule-item">
+            <div class="rule-indicator clear"></div>
+            <div class="rule-info">
+              <div class="rule-name">필수 항목 누락</div>
+              <div class="rule-meta">이상 없음</div>
+            </div>
+            <div class="toggle on"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ISSUES -->
+      <div class="issues-section">
+        <div class="section-label">발견된 이슈 · 5건</div>
+
+        <div class="issue-item active">
+          <div class="issue-header">
+            <span class="issue-severity error">ERROR</span>
+            <span class="issue-cell">F10</span>
+            <span class="issue-rule">합계 검증</span>
+          </div>
+          <div class="issue-desc">자재비 소계 불일치</div>
+          <div class="issue-values">
+            <span><span class="issue-val-label">현재 </span><span class="issue-val-current">400,000</span></span>
+            <span><span class="issue-val-label">기대 </span><span class="issue-val-expected">487,000</span></span>
+          </div>
+        </div>
+
+        <div class="issue-item">
+          <div class="issue-header">
+            <span class="issue-severity error">ERROR</span>
+            <span class="issue-cell">F20</span>
+            <span class="issue-rule">합계 검증</span>
+          </div>
+          <div class="issue-desc">인건비 소계 불일치</div>
+          <div class="issue-values">
+            <span><span class="issue-val-label">현재 </span><span class="issue-val-current">3,200,000</span></span>
+            <span><span class="issue-val-label">기대 </span><span class="issue-val-expected">3,630,000</span></span>
+          </div>
+        </div>
+
+        <div class="issue-item">
+          <div class="issue-header">
+            <span class="issue-severity warning">WARN</span>
+            <span class="issue-cell">E8</span>
+            <span class="issue-rule">이상치</span>
+          </div>
+          <div class="issue-desc">윤활유 단가 350,000원 — 평균 대비 312%</div>
+        </div>
+
+        <div class="issue-item">
+          <div class="issue-header">
+            <span class="issue-severity warning">WARN</span>
+            <span class="issue-cell">A9</span>
+            <span class="issue-rule">중복</span>
+          </div>
+          <div class="issue-desc">베어링 6205 동일 수량·금액 2회 청구</div>
+        </div>
+
+        <div class="issue-item">
+          <div class="issue-header">
+            <span class="issue-severity warning">WARN</span>
+            <span class="issue-cell">D14</span>
+            <span class="issue-rule">범위 초과</span>
+          </div>
+          <div class="issue-desc">박기사 투입 26h — 24h 한도 초과</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- RIGHT — GRID -->
+    <div class="grid-area">
+      <div class="sheet-bar">
+        <div class="sheet-tab active">5월_정산</div>
+        <div class="sheet-tab">4월_정산</div>
+        <div class="sheet-tab">단가기준표</div>
+        <span class="sheet-info">39 × 7 · 셀을 클릭하여 Excel 이동</span>
+      </div>
+
+      <div class="grid-scroll">
+        <table class="excel">
+          <thead>
+            <tr>
+              <th class="corner"></th>
+              <th style="min-width:50px">A</th>
+              <th style="min-width:180px">B</th>
+              <th style="min-width:160px">C</th>
+              <th style="min-width:90px">D</th>
+              <th style="min-width:110px">E</th>
+              <th style="min-width:110px">F</th>
+              <th style="min-width:120px">G</th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- Row 1: Title -->
+            <tr>
+              <td class="rn">1</td>
+              <td class="cell-title" colspan="3">정비 비용정산서 (2026년 5월)</td>
+              <td></td><td></td><td></td><td></td>
+            </tr>
+            <!-- Row 2 -->
+            <tr>
+              <td class="rn">2</td>
+              <td class="cell-label">정산일:</td>
+              <td>2026-05-03</td>
+              <td></td>
+              <td class="cell-label">부서:</td>
+              <td>인프라팀</td>
+              <td class="cell-label">공사번호:</td>
+              <td>MO-2026-0503</td>
+            </tr>
+            <!-- Row 3 -->
+            <tr>
+              <td class="rn">3</td>
+              <td class="cell-label">설비코드:</td>
+              <td>CH-001</td>
+              <td>Chiller #1</td>
+              <td class="cell-label">정비유형:</td>
+              <td>사후정비</td>
+              <td class="cell-label">작업구역:</td>
+              <td>유틸동 B1</td>
+            </tr>
+            <!-- Row 4 -->
+            <tr>
+              <td class="rn">4</td>
+              <td class="cell-label">작성자:</td>
+              <td>홍길동</td>
+              <td></td>
+              <td class="cell-label">승인자:</td>
+              <td>김부장</td>
+              <td></td><td></td>
+            </tr>
+            <!-- Row 5: Empty -->
+            <tr><td class="rn">5</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+            <!-- Row 6: Section -->
+            <tr class="row-section">
+              <td class="rn">6</td>
+              <td colspan="7">자재비</td>
+            </tr>
+            <!-- Row 7: Header -->
+            <tr>
+              <td class="rn">7</td>
+              <td class="cell-header">No.</td>
+              <td class="cell-header">자재명</td>
+              <td class="cell-header">규격/사양</td>
+              <td class="cell-header">수량</td>
+              <td class="cell-header">단가(원)</td>
+              <td class="cell-header">금액(원)</td>
+              <td class="cell-header">비고</td>
+            </tr>
+            <!-- Data rows -->
+            <tr>
+              <td class="rn">8</td>
+              <td class="cell-num">1</td>
+              <td>베어링 6205-2RS</td>
+              <td>NSK / 내경25mm</td>
+              <td class="cell-num">4</td>
+              <td class="cell-num">15,000</td>
+              <td class="cell-num">60,000</td>
+              <td>정기교체</td>
+            </tr>
+            <tr>
+              <td class="rn">9</td>
+              <td class="cell-num">2</td>
+              <td>V벨트 B-52</td>
+              <td>반도 / 1321mm</td>
+              <td class="cell-num">2</td>
+              <td class="cell-num">8,500</td>
+              <td class="cell-num">17,000</td>
+              <td></td>
+            </tr>
+            <tr>
+              <td class="rn">10</td>
+              <td class="cell-num">3</td>
+              <td>메카니컬씰 MG1-35</td>
+              <td>Burgmann / 35mm</td>
+              <td class="cell-num">1</td>
+              <td class="cell-num">285,000</td>
+              <td class="cell-num">285,000</td>
+              <td>긴급 수입</td>
+            </tr>
+            <tr>
+              <td class="rn">11</td>
+              <td class="cell-num">4</td>
+              <td>윤활유 Mobil SHC 630</td>
+              <td>ISO VG 220 / 20L</td>
+              <td class="cell-num">1</td>
+              <td class="cell-num cell-warning">350,000</td>
+              <td class="cell-num">350,000</td>
+              <td style="color:var(--orange);">단가확인 필요</td>
+            </tr>
+            <tr>
+              <td class="rn">12</td>
+              <td class="cell-num">5</td>
+              <td>가스켓 Non-Asbestos</td>
+              <td>Klinger / DN50</td>
+              <td class="cell-num">6</td>
+              <td class="cell-num">12,000</td>
+              <td class="cell-num">72,000</td>
+              <td></td>
+            </tr>
+            <tr>
+              <td class="rn">13</td>
+              <td class="cell-num">6</td>
+              <td>커플링 L-100</td>
+              <td>Lovejoy / 1-1/8"</td>
+              <td class="cell-num">2</td>
+              <td class="cell-num">45,000</td>
+              <td class="cell-num">90,000</td>
+              <td></td>
+            </tr>
+            <tr>
+              <td class="rn">14</td>
+              <td class="cell-num cell-dup">7</td>
+              <td class="cell-dup">베어링 6205-2RS</td>
+              <td class="cell-dup">NSK / 내경25mm</td>
+              <td class="cell-num cell-dup">4</td>
+              <td class="cell-num cell-dup">15,000</td>
+              <td class="cell-num cell-dup">60,000</td>
+              <td class="cell-dup" style="color:#bf5af2;">중복 의심</td>
+            </tr>
+            <tr>
+              <td class="rn">15</td>
+              <td class="cell-num">8</td>
+              <td>오링 P-30</td>
+              <td>NOK / Viton</td>
+              <td class="cell-num">10</td>
+              <td class="cell-num">3,500</td>
+              <td class="cell-num">35,000</td>
+              <td></td>
+            </tr>
+            <!-- Subtotal -->
+            <tr class="row-subtotal">
+              <td class="rn">16</td>
+              <td></td>
+              <td class="cell-bold">소계</td>
+              <td></td><td></td><td></td>
+              <td class="cell-num cell-error cell-selected">400,000</td>
+              <td></td>
+            </tr>
+            <!-- Empty -->
+            <tr><td class="rn">17</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+            <!-- 인건비 Section -->
+            <tr class="row-section">
+              <td class="rn">18</td>
+              <td colspan="7">인건비</td>
+            </tr>
+            <tr>
+              <td class="rn">19</td>
+              <td class="cell-header">No.</td>
+              <td class="cell-header">구분</td>
+              <td class="cell-header">성명/업체</td>
+              <td class="cell-header">시간(h)</td>
+              <td class="cell-header">단가(원/h)</td>
+              <td class="cell-header">금액(원)</td>
+              <td class="cell-header">비고</td>
+            </tr>
+            <tr>
+              <td class="rn">20</td>
+              <td class="cell-num">1</td>
+              <td>내부</td>
+              <td>김철수</td>
+              <td class="cell-num">8</td>
+              <td class="cell-num">30,000</td>
+              <td class="cell-num">240,000</td>
+              <td>주간</td>
+            </tr>
+            <tr>
+              <td class="rn">21</td>
+              <td class="cell-num">2</td>
+              <td>외주</td>
+              <td>(주)정비테크 박기사</td>
+              <td class="cell-num cell-warning">26</td>
+              <td class="cell-num">45,000</td>
+              <td class="cell-num">1,170,000</td>
+              <td style="color:var(--orange);">긴급 투입</td>
+            </tr>
+            <tr>
+              <td class="rn">22</td>
+              <td class="cell-num">3</td>
+              <td>내부</td>
+              <td>이영희</td>
+              <td class="cell-num">10</td>
+              <td class="cell-num">30,000</td>
+              <td class="cell-num">300,000</td>
+              <td>야간 포함</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>

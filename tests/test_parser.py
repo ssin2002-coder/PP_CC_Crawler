@@ -100,7 +100,7 @@ class TestParseTableData:
         a_rec = [r for r in records if r['content_col_name'] == 'A동']
         assert len(a_rec) == 1
         assert a_rec[0]['val1'] == 'Day'
-        assert a_rec[0]['item_text'] == 'AHU-3 이상진동'
+        assert a_rec[0]['raw_text'] == 'AHU-3 이상진동'
         assert a_rec[0]['header4'] == '비고'
         assert a_rec[0]['val4'] == '베어링 발주'
 
@@ -112,8 +112,8 @@ class TestParseTableData:
         records = parse_table_data(headers, rows_data, '2024-05-03', 'test.docx')
         a_recs = [r for r in records if r['content_col_name'] == 'A동']
         assert len(a_recs) == 2
-        assert a_recs[0]['item_text'] == 'AHU 이상'
-        assert a_recs[1]['item_text'] == '보일러 점검'
+        assert a_recs[0]['raw_text'] == 'AHU 이상'
+        assert a_recs[1]['raw_text'] == '보일러 점검'
         # raw_cell은 동일
         assert a_recs[0]['raw_cell'] == a_recs[1]['raw_cell']
 

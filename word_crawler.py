@@ -1,7 +1,7 @@
 """
 설비일보 Word 크롤러 (단일 파일)
 - 열린 Word 문서에서 설비일보 표를 자동 감지/파싱 (동적 헤더)
-- [현상][원인][조치] 태그 추출 + 2+ 개행으로 항목 분리
+- *제목 + 본문 형식 항목 추출 (2+ 개행으로 항목 분리)
 - SQLite 적재 + CSV 내보내기 → SQream 이관
 - 시스템 트레이 + tkinter 다크 테마 팝업 UI
 
@@ -43,9 +43,9 @@ from tkinter import ttk, simpledialog, filedialog, messagebox
 # Constants
 # ─────────────────────────────────────────────
 
-TAG_PATTERN = re.compile(r'\[(현상|원인|조치)\]\s*([^\r\n\[\]]+)')
-
 DATE_PATTERNS_TEXT = [
+    # "일자 : 2024년 5월 3일" 형식 우선
+    re.compile(r'일\s*자[:：\s]+(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일'),
     re.compile(r'(\d{4})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})'),
     re.compile(r'(\d{2})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})'),
 ]
@@ -101,9 +101,6 @@ def init_db(db_path=None):
             val1             TEXT,
             content_col_name TEXT,
             title            TEXT,
-            phenomenon       TEXT,
-            cause            TEXT,
-            action           TEXT,
             raw_text         TEXT,
             raw_cell         TEXT,
             header4          TEXT,
@@ -121,6 +118,12 @@ def init_db(db_path=None):
         conn.execute('ALTER TABLE facility_daily ADD COLUMN exported_at TEXT')
     except Exception:
         pass
+    # 기존 DB 마이그레이션: phenomenon/cause/action 컬럼 제거 (SQLite 3.35+)
+    for col in ('phenomenon', 'cause', 'action'):
+        try:
+            conn.execute(f'ALTER TABLE facility_daily DROP COLUMN {col}')
+        except Exception:
+            pass
     conn.commit()
     conn.close()
 
@@ -131,13 +134,12 @@ def insert_records(db_path, records, content_hash=None):
         conn.execute('''
             INSERT INTO facility_daily
             (date, source_file, row_num, header1, val1, content_col_name,
-             title, phenomenon, cause, action, raw_text, raw_cell, header4, val4, content_hash)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             title, raw_text, raw_cell, header4, val4, content_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             rec['date'], rec['source_file'], rec['row_num'],
             rec['header1'], rec['val1'], rec['content_col_name'],
-            rec.get('title', ''), rec.get('phenomenon', ''), rec.get('cause', ''), rec.get('action', ''),
-            rec.get('raw_text', ''), rec['raw_cell'],
+            rec.get('title', ''), rec.get('raw_text', ''), rec['raw_cell'],
             rec['header4'], rec['val4'], content_hash,
         ))
     conn.commit()
@@ -268,38 +270,35 @@ def _strip_numbering(text):
     return re.sub(r'^\d+\)\s*', '', text.strip(), flags=re.MULTILINE)
 
 
+_TITLE_LINE_RE = re.compile(r'^\*\s*(.+)$')
+
+
 def parse_item_block(text):
-    """한 블록(2+ 개행으로 분리된 단위)에서 title + [현상][원인][조치] 태그 추출.
-    [현상] 앞의 텍스트 → title. 태그가 없으면 raw_text에 전체 텍스트."""
+    """한 블록(2+ 개행으로 분리된 단위)을 title + raw_text 로 분리.
+
+    포맷:
+        *제목
+         - 내용 1
+         - 내용 2
+
+    `*` 로 시작하는 첫 줄은 title 로 추출하고 나머지 줄은 raw_text 에 이어
+    붙인다. `*` 라인이 없으면 title 은 비우고 전체 텍스트를 raw_text 에 둔다.
+    1) 2) 형식 번호 접두는 제거한다."""
     text = _strip_numbering(text)
-    parsed = {'title': '', 'phenomenon': '', 'cause': '', 'action': '', 'raw_text': ''}
+    parsed = {'title': '', 'raw_text': ''}
 
-    # [현상] 앞의 텍스트를 title로 추출
-    first_tag = re.search(r'\[(현상|원인|조치)\]', text)
-    if first_tag:
-        before = text[:first_tag.start()].strip()
-        if before:
-            parsed['title'] = before
+    body_lines = []
+    for line in text.split('\n'):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        m = _TITLE_LINE_RE.match(stripped)
+        if m and not parsed['title']:
+            parsed['title'] = m.group(1).strip()
+            continue
+        body_lines.append(stripped)
 
-    for match in TAG_PATTERN.finditer(text):
-        tag, content = match.group(1), match.group(2).strip()
-        if tag == '현상':
-            parsed['phenomenon'] = content
-        elif tag == '원인':
-            parsed['cause'] = content
-        elif tag == '조치':
-            parsed['action'] = content
-
-    if not parsed['phenomenon'] and not parsed['cause'] and not parsed['action']:
-        parsed['raw_text'] = text.strip()
-    else:
-        leftover = re.sub(r'\[(현상|원인|조치)\]\s*[^\r\n\[\]]+', '', text).strip()
-        leftover = '\n'.join(line.strip() for line in leftover.split('\n') if line.strip())
-        # title로 이미 추출한 부분 제거
-        if parsed['title'] and leftover.startswith(parsed['title']):
-            leftover = leftover[len(parsed['title']):].strip()
-        parsed['raw_text'] = leftover
-
+    parsed['raw_text'] = '\n'.join(body_lines)
     return parsed
 
 
@@ -366,9 +365,6 @@ def parse_table_data(headers, rows_data, date_str, source_file):
                     'val1': val1,
                     'content_col_name': col_name,
                     'title': parsed['title'],
-                    'phenomenon': parsed['phenomenon'],
-                    'cause': parsed['cause'],
-                    'action': parsed['action'],
                     'raw_text': parsed['raw_text'],
                     'raw_cell': raw_cell,
                     'header4': h4_name,
@@ -641,10 +637,7 @@ class ParseResultPopup:
             ('val1',             'val1',              '구분',   60),
             ('content_col_name', 'content_col_name',  '영역',   60),
             ('title',            'title',             '제목',  140),
-            ('phenomenon',       'phenomenon',        '현상',  170),
-            ('cause',            'cause',             '원인',  170),
-            ('action',           'action',            '조치',  170),
-            ('raw_text',         'raw_text',          '기타',  170),
+            ('raw_text',         'raw_text',          '내용',  240),
             ('raw_cell',         'raw_cell',          '원문',  150),
             ('header4',          'header4',           '헤더4',  60),
             ('val4',             'val4',              '비고',  100),

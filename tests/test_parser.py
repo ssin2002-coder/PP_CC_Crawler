@@ -3,6 +3,7 @@ import pytest
 from word_crawler import (
     clean_cell_text, split_items, extract_date_from_text,
     extract_date_from_filename, find_main_table_index, parse_table_data,
+    parse_item_block,
 )
 
 
@@ -54,6 +55,12 @@ class TestExtractDate:
     def test_from_text_korean(self):
         assert extract_date_from_text('2024년 5월 3일 설비일보') == '2024-05-03'
 
+    def test_from_text_ilja_label(self):
+        assert extract_date_from_text('일자 : 2024년 5월 3일') == '2024-05-03'
+
+    def test_from_text_ilja_label_fullwidth_colon(self):
+        assert extract_date_from_text('일자 ：2024년 12월 31일') == '2024-12-31'
+
     def test_from_text_dotted(self):
         assert extract_date_from_text('2024.05.03') == '2024-05-03'
 
@@ -86,6 +93,29 @@ class TestFindMainTable:
 
     def test_empty(self):
         assert find_main_table_index([]) is None
+
+
+class TestParseItemBlock:
+    def test_title_and_dash_body(self):
+        text = '*AHU-3 이상진동\n - 베어링 발주\n - 임시조치'
+        parsed = parse_item_block(text)
+        assert parsed['title'] == 'AHU-3 이상진동'
+        assert parsed['raw_text'] == '- 베어링 발주\n- 임시조치'
+
+    def test_title_only(self):
+        parsed = parse_item_block('*제목만 있음')
+        assert parsed['title'] == '제목만 있음'
+        assert parsed['raw_text'] == ''
+
+    def test_no_title_marker(self):
+        parsed = parse_item_block('단순 본문\n계속')
+        assert parsed['title'] == ''
+        assert parsed['raw_text'] == '단순 본문\n계속'
+
+    def test_strips_numbering(self):
+        parsed = parse_item_block('1) *AHU 이상\n2) - 점검')
+        assert parsed['title'] == 'AHU 이상'
+        assert parsed['raw_text'] == '- 점검'
 
 
 class TestParseTableData:

@@ -327,10 +327,21 @@ def extract_date_from_filename(filename):
     return None
 
 
-def find_main_table_index(row_counts):
-    if not row_counts:
+REQUIRED_HEADERS = ('구분', 'UT동', '확산동', '전달사항')
+
+
+def find_main_table_index(headers_list):
+    """각 표의 1행 헤더 리스트(list[list[str]])를 받아 메인 표 인덱스를 반환.
+
+    REQUIRED_HEADERS(`구분`, `UT동`, `확산동`, `전달사항`) 가 1행에 모두
+    포함된 첫 번째 표를 메인 표로 선택. 매칭되는 표가 없으면 None."""
+    if not headers_list:
         return None
-    return row_counts.index(max(row_counts))
+    for idx, headers in enumerate(headers_list):
+        normalized = [re.sub(r'\s+', '', h or '') for h in headers]
+        if all(req in normalized for req in REQUIRED_HEADERS):
+            return idx
+    return None
 
 
 def parse_table_data(headers, rows_data, date_str, source_file):
@@ -449,20 +460,21 @@ class WordWatcher:
     def _parse_document(self, doc):
         if doc.Tables.Count == 0:
             return None
-        row_counts = []
+        # 각 표의 1행 헤더를 수집해 REQUIRED_HEADERS 매칭으로 메인 표 선정
+        headers_list = []
         for t in range(1, doc.Tables.Count + 1):
             try:
-                row_counts.append(doc.Tables(t).Rows.Count)
+                row1 = doc.Tables(t).Rows(1)
+                cells = [clean_cell_text(row1.Cells(c).Range.Text)
+                         for c in range(1, row1.Cells.Count + 1)]
+                headers_list.append(cells)
             except Exception:
-                row_counts.append(0)
-        table_idx = find_main_table_index(row_counts)
+                headers_list.append([])
+        table_idx = find_main_table_index(headers_list)
         if table_idx is None:
             return None
         table = doc.Tables(table_idx + 1)
-        headers = []
-        row1 = table.Rows(1)
-        for c in range(1, row1.Cells.Count + 1):
-            headers.append(clean_cell_text(row1.Cells(c).Range.Text))
+        headers = headers_list[table_idx]
         date_str = None
         table_range = table.Range
         doc_text_before = doc.Range(0, table_range.Start).Text

@@ -84,12 +84,30 @@ class TestExtractDate:
 
 
 class TestFindMainTable:
-    def test_returns_largest(self):
-        # row_counts: [2, 10, 5] → index 1
-        assert find_main_table_index([2, 10, 5]) == 1
+    REQUIRED = ['구분', 'UT동', '확산동', '전달사항']
 
-    def test_single_table(self):
-        assert find_main_table_index([5]) == 0
+    def test_picks_table_with_required_headers(self):
+        # 표 0: 무관, 표 1: 매칭 → index 1
+        tables = [
+            ['항목', '값'],
+            list(self.REQUIRED),
+        ]
+        assert find_main_table_index(tables) == 1
+
+    def test_first_match_wins(self):
+        tables = [
+            list(self.REQUIRED),
+            list(self.REQUIRED),
+        ]
+        assert find_main_table_index(tables) == 0
+
+    def test_tolerates_whitespace(self):
+        tables = [['구 분', 'UT 동', '확산동', '전달 사항']]
+        assert find_main_table_index(tables) == 0
+
+    def test_no_match(self):
+        tables = [['항목', '값'], ['구분', 'A동', 'B동', '비고']]
+        assert find_main_table_index(tables) is None
 
     def test_empty(self):
         assert find_main_table_index([]) is None

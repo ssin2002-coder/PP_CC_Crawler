@@ -211,16 +211,11 @@ def export_csv(db_path, output_path, start_date=None, end_date=None):
         conn.close()
         return 0
     keys = rows[0].keys()
-    multiline_cols = {'title', 'raw_text', 'raw_cell'}
     with open(output_path, 'w', newline='', encoding='utf-8-sig') as f:
         writer = csv.DictWriter(f, fieldnames=keys)
         writer.writeheader()
         for row in rows:
-            d = dict(row)
-            for k in multiline_cols:
-                if k in d and d[k]:
-                    d[k] = format_multiline(d[k])
-            writer.writerow(d)
+            writer.writerow(dict(row))
     # 내보낸 레코드에 exported_at 기록
     ids = [row['id'] for row in rows]
     placeholders = ','.join('?' for _ in ids)

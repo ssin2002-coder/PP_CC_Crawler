@@ -660,9 +660,41 @@ class ParseResultPopup:
         with self._lock:
             self._pending.append((doc_name, date_str, records, content_hash))
         if self._root and self._alive:
-            self._root.after(0, self._refresh_tree)
+            # 새 docx 가 열릴 때마다 _refresh_tree 가 창을 자동으로 활성화
+            # /최대화하지 않도록 현재 창 상태를 보존하고 갱신 후 복원
+            self._root.after(0, self._refresh_preserving_state)
         else:
             threading.Thread(target=self._show, daemon=True).start()
+
+    def _refresh_preserving_state(self):
+        """_refresh_tree 호출 전후로 root 의 표시 상태(최소화/withdrawn/zoomed)
+        를 복원. 사용자가 최소화해 둔 창이 새 파싱 결과 도착 시 자동으로
+        떠오르는 것을 방지."""
+        saved = None
+        try:
+            saved = self._root.state()
+        except Exception:
+            pass
+        self._refresh_tree()
+        if saved and saved != 'normal':
+            # tkinter 갱신이 끝난 뒤 한 박자 늦게 복원해야 효과 있음
+            try:
+                self._root.after(50, lambda s=saved: self._restore_window_state(s))
+            except Exception:
+                pass
+
+    def _restore_window_state(self, state):
+        try:
+            if self._root.state() == state:
+                return
+            if state == 'iconic':
+                self._root.iconify()
+            elif state == 'withdrawn':
+                self._root.withdraw()
+            elif state == 'zoomed':
+                self._root.state('zoomed')
+        except Exception:
+            pass
 
     def _show(self):
         self._alive = True

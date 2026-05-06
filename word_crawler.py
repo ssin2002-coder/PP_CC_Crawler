@@ -661,20 +661,27 @@ class ParseResultPopup:
         with self._lock:
             self._pending.append((doc_name, date_str, records, content_hash))
             self._dirty = True
+        # 호출자는 WordWatcher 폴링 스레드. tkinter 는 thread-safe 가
+        # 아니므로 root.state() 등 모든 root 조작을 메인 스레드에 위임.
+        # 그렇지 않으면 백그라운드 호출이 부작용으로 창을 활성화시킨다.
         if self._root and self._alive:
-            # 창이 normal(=visible) 상태일 때만 즉시 갱신.
-            # iconic/withdrawn 이면 데이터만 누적하고, 사용자가 창을 다시
-            # 열거나 트레이 메뉴로 호출할 때 일괄 갱신 → 최소화한 창이
-            # 자동으로 떠오르지 않음.
             try:
-                state = self._root.state()
+                self._root.after(0, self._maybe_refresh)
+                return
             except Exception:
-                state = 'normal'
-            if state == 'normal':
-                self._root.after(0, self._refresh_and_clear_dirty)
-            # iconic/withdrawn → 아무 것도 하지 않음 (tray.notify 만 표시됨)
-        else:
-            threading.Thread(target=self._show, daemon=True).start()
+                pass
+        threading.Thread(target=self._show, daemon=True).start()
+
+    def _maybe_refresh(self):
+        """메인 스레드: 창이 visible(normal) 일 때만 즉시 갱신.
+        iconic/withdrawn/zoomed-but-iconified 면 _dirty 만 두고 아무 것도
+        안 함 → Treeview 가 안 만져지므로 창이 떠오를 여지가 없음."""
+        try:
+            st = self._root.state()
+        except Exception:
+            return
+        if st == 'normal' and self._dirty:
+            self._refresh_and_clear_dirty()
 
     def _refresh_and_clear_dirty(self):
         self._dirty = False

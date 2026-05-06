@@ -3,7 +3,7 @@ import pytest
 from word_crawler import (
     clean_cell_text, split_items, extract_date_from_text,
     extract_date_from_filename, find_main_table_index, parse_table_data,
-    parse_item_block, format_multiline,
+    parse_item_block, format_multiline, _tree_cell, MULTILINE_TREE_COLS,
 )
 
 
@@ -132,6 +132,33 @@ class TestFormatMultiline:
 
     def test_custom_sep(self):
         assert format_multiline('a\nb', sep=' / ') == 'a / b'
+
+
+class TestTreeCell:
+    def test_multiline_col_preserves_newlines(self):
+        rec = {'raw_text': '- 베어링 발주\n- 임시조치'}
+        assert _tree_cell(rec, 'raw_text') == '- 베어링 발주\n- 임시조치'
+
+    def test_multiline_col_strips_blank_lines(self):
+        rec = {'raw_cell': '*AHU\n\n - 점검\n\n\n - 교체'}
+        # 빈 줄 제거되지만 단일 \n 는 보존
+        assert _tree_cell(rec, 'raw_cell') == '*AHU\n- 점검\n- 교체'
+
+    def test_single_line_col_flattens(self):
+        rec = {'val1': 'Day\nNight'}
+        assert _tree_cell(rec, 'val1') == 'Day | Night'
+
+    def test_normalizes_crlf(self):
+        rec = {'raw_text': 'a\r\nb\rc'}
+        assert _tree_cell(rec, 'raw_text') == 'a\nb\nc'
+
+    def test_empty(self):
+        assert _tree_cell({}, 'raw_text') == ''
+        assert _tree_cell({'raw_text': None}, 'raw_text') == ''
+
+    def test_multiline_cols_set(self):
+        # 사용자 요구 컬럼이 멀티라인 보존 대상에 포함되어야 함
+        assert {'title', 'raw_text', 'raw_cell'} <= MULTILINE_TREE_COLS
 
 
 class TestParseItemBlock:

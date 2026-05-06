@@ -135,14 +135,14 @@ class TestFormatMultiline:
 
 
 class TestTreeCell:
-    def test_multiline_col_preserves_newlines(self):
+    def test_multiline_col_flattens_to_pipe(self):
+        # 리스트 표시는 한 줄. 원본 \n 은 _row_records 에서 별도 보존.
         rec = {'raw_text': '- 베어링 발주\n- 임시조치'}
-        assert _tree_cell(rec, 'raw_text') == '- 베어링 발주\n- 임시조치'
+        assert _tree_cell(rec, 'raw_text') == '- 베어링 발주 | - 임시조치'
 
-    def test_multiline_col_strips_blank_lines(self):
+    def test_collapses_blank_lines(self):
         rec = {'raw_cell': '*AHU\n\n - 점검\n\n\n - 교체'}
-        # 빈 줄 제거되지만 단일 \n 는 보존
-        assert _tree_cell(rec, 'raw_cell') == '*AHU\n- 점검\n- 교체'
+        assert _tree_cell(rec, 'raw_cell') == '*AHU | - 점검 | - 교체'
 
     def test_single_line_col_flattens(self):
         rec = {'val1': 'Day\nNight'}
@@ -150,14 +150,14 @@ class TestTreeCell:
 
     def test_normalizes_crlf(self):
         rec = {'raw_text': 'a\r\nb\rc'}
-        assert _tree_cell(rec, 'raw_text') == 'a\nb\nc'
+        assert _tree_cell(rec, 'raw_text') == 'a | b | c'
 
     def test_empty(self):
         assert _tree_cell({}, 'raw_text') == ''
         assert _tree_cell({'raw_text': None}, 'raw_text') == ''
 
     def test_multiline_cols_set(self):
-        # 사용자 요구 컬럼이 멀티라인 보존 대상에 포함되어야 함
+        # 더블클릭 팝업 멀티라인 표시 대상 컬럼
         assert {'title', 'raw_text', 'raw_cell'} <= MULTILINE_TREE_COLS
 
 

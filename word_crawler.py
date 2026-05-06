@@ -573,15 +573,13 @@ def _flat(text):
 
 
 def _tree_cell(rec, col_id):
-    """Treeview 셀 표시용. 멀티라인 컬럼은 개행 보존, 나머지는 ` | ` 한 줄."""
+    """Treeview 셀 표시용. 모든 컬럼을 한 줄로 변환. 멀티라인 컬럼은
+    ` | ` 구분자로 합쳐 한 줄에 들어가게 한다(원본 \\n 은 record dict 에
+    그대로 보존되어 더블클릭 팝업에서 사용)."""
     val = rec.get(col_id, '')
     if not val:
         return ''
-    s = str(val).replace('\r\n', '\n').replace('\r', '\n')
-    if col_id in MULTILINE_TREE_COLS:
-        # 빈 줄 제거 + 각 라인 양쪽 공백 정리, 단일 개행은 보존
-        return '\n'.join(line.strip() for line in s.split('\n') if line.strip())
-    return format_multiline(s)
+    return format_multiline(str(val))
 
 
 def _apply_dark_theme(root):
@@ -652,6 +650,7 @@ class ParseResultPopup:
         self._lock = threading.Lock()
         self._root = None
         self._tree = None
+        self._row_records = {}  # Treeview item id → 원본 record dict (개행 포함)
         self._date_listbox = None
         self._info_var = None
         self._db_records = []
@@ -741,7 +740,7 @@ class ParseResultPopup:
                                           height=1, selectmode='none')
         for col_id, db_name, label, w in self._col_defs:
             self._header_tree.heading(col_id, text=db_name, anchor='center')
-            self._header_tree.column(col_id, width=w, minwidth=40, stretch=True, anchor='center')
+            self._header_tree.column(col_id, width=w, minwidth=40, stretch=False, anchor='center')
         self._header_tree.tag_configure('label_row',
                                          background=C['bg_surface'], foreground=C['text_accent'])
         display_labels = tuple(d[2] for d in self._col_defs)
@@ -781,7 +780,7 @@ class ParseResultPopup:
 
         for col_id, db_name, label, w in self._col_defs:
             self._tree.heading(col_id, text='')  # 데이터 Treeview 헤더는 숨김 (고정 헤더가 대체)
-            self._tree.column(col_id, width=w, minwidth=40, stretch=True)
+            self._tree.column(col_id, width=w, minwidth=40, stretch=False)
 
         # 데이터 Treeview 네이티브 헤더 숨김
         style = ttk.Style(root)
@@ -923,38 +922,29 @@ class ParseResultPopup:
 
         # Treeview
         self._tree.delete(*self._tree.get_children())
+        self._row_records.clear()
 
         def _rec_to_values(rec):
             return tuple(_tree_cell(rec, d[0]) for d in self._col_defs)
 
-        max_lines = 1
         for doc_name, date_str, records, content_hash in pending_copy:
             if self._current_filter_date and date_str != self._current_filter_date:
                 continue
             for rec in records:
                 # pending 레코드에 content_hash 추가 (표시용)
                 rec_with_hash = dict(rec, content_hash=content_hash or '')
-                vals = _rec_to_values(rec_with_hash)
-                self._tree.insert('', 'end', tags=('new', f'p:{doc_name}:{date_str}'),
-                    values=vals)
-                for v in vals:
-                    if v:
-                        max_lines = max(max_lines, str(v).count('\n') + 1)
+                iid = self._tree.insert('', 'end',
+                    tags=('new', f'p:{doc_name}:{date_str}'),
+                    values=_rec_to_values(rec_with_hash))
+                self._row_records[iid] = rec_with_hash
 
         for rec in self._db_records:
             d = rec.get('date', '')
             if self._current_filter_date and d != self._current_filter_date:
                 continue
-            vals = _rec_to_values(rec)
-            self._tree.insert('', 'end', tags=(f'db:{rec.get("id","")}',),
-                values=vals)
-            for v in vals:
-                if v:
-                    max_lines = max(max_lines, str(v).count('\n') + 1)
-
-        # 멀티라인 셀에 맞춰 데이터 Treeview rowheight 조정 (24~200px clamp)
-        row_h = max(24, min(max_lines * 18 + 6, 200))
-        ttk.Style(self._root).configure('Data.Treeview', rowheight=row_h)
+            iid = self._tree.insert('', 'end', tags=(f'db:{rec.get("id","")}',),
+                values=_rec_to_values(rec))
+            self._row_records[iid] = rec
 
         total_db = len(self._db_records)
         total_new = sum(len(r) for _, _, r, _ in pending_copy)
@@ -989,7 +979,13 @@ class ParseResultPopup:
         col_name = self._col_defs[col_idx][2] if col_idx < len(self._col_defs) else ''
         col_id = self._col_defs[col_idx][0] if col_idx < len(self._col_defs) else ''
         values = list(self._tree.item(item, 'values'))
-        current_val = values[col_idx] if col_idx < len(values) else ''
+        # 팝업에는 _row_records 의 원본 값(개행 포함) 표시.
+        # 폴백으로 Treeview 셀의 한 줄 표시값 사용.
+        rec = self._row_records.get(item)
+        if rec is not None and col_id in rec:
+            current_val = str(rec.get(col_id, '') or '')
+        else:
+            current_val = values[col_idx] if col_idx < len(values) else ''
 
         edit_win = tk.Toplevel(self._root)
         edit_win.title(f'{col_name} 편집')
@@ -1010,10 +1006,15 @@ class ParseResultPopup:
             raw = text_widget.get('1.0', 'end').strip()
             if col_id in MULTILINE_TREE_COLS:
                 # 멀티라인 컬럼은 개행 보존, 빈 줄만 제거
-                new_val = '\n'.join(line.rstrip() for line in raw.split('\n') if line.strip())
+                stored_val = '\n'.join(
+                    line.rstrip() for line in raw.split('\n') if line.strip())
             else:
-                new_val = _flat(raw)
-            values[col_idx] = new_val
+                stored_val = _flat(raw)
+            # 원본 record 갱신 (다음 더블클릭에서도 멀티라인 유지)
+            if rec is not None and col_id:
+                rec[col_id] = stored_val
+            # Treeview 셀은 항상 한 줄로 표시
+            values[col_idx] = _tree_cell({col_id: stored_val}, col_id) if col_id else stored_val
             self._tree.item(item, values=values)
             edit_win.destroy()
 

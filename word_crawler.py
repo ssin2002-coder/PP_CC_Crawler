@@ -632,89 +632,112 @@ def _dark_button(parent, text='', command=None, style='default', **kw):
 
 
 class ParseResultPopup:
-    """파싱 결과 뷰어. 메인 스레드의 tk.Tk() root 위에 Toplevel 로 한 번
-    빌드되고, 이후엔 deiconify()/withdraw() 만 토글한다.
+    _instance = None
+    _cls_lock = threading.Lock()
 
-    이전 구조(자체 tk.Tk() + 백그라운드 mainloop) 의 thread-affine 문제와
-    새 docx 마다 창이 한 개씩 추가 생성되던 race 를 모두 제거.
-    모든 root/Toplevel 호출은 root.after() 로 메인 스레드에 위임."""
+    @classmethod
+    def get_or_create(cls, on_save_all=None, db_path=None):
+        with cls._cls_lock:
+            if cls._instance is None or not cls._instance._alive:
+                cls._instance = cls(on_save_all=on_save_all, db_path=db_path)
+            return cls._instance
 
-    def __init__(self, root, on_save_all=None, db_path=None):
-        self._root = root  # 메인 스레드의 tk.Tk()
+    def __init__(self, on_save_all=None, db_path=None):
         self.on_save_all = on_save_all or (lambda p: None)
         self.db_path = db_path
-        self._pending = []   # [(doc_name, date_str, records, content_hash), ...]
+        self._alive = False
+        self._pending = []
+        self._lock = threading.Lock()
+        self._root = None
         self._tree = None
-        self._window = None  # Toplevel (UI 빌드 후 set)
-        self._row_records = {}
-        self._dirty = False
+        self._row_records = {}  # Treeview item id → 원본 record dict (개행 포함)
+        self._dirty = False     # 최소화 중 누적된 미반영 pending 존재 여부
+        self._show_starting = False  # _show 스레드 시작 ~ root 준비 사이 race 가드
+        self._date_listbox = None
+        self._info_var = None
         self._db_records = []
         self._current_filter_date = None
 
-    # ── 외부 API (다른 스레드에서 호출 가능) ──
-
     def add_records(self, doc_name, date_str, records, content_hash):
-        """WordWatcher 폴링 스레드에서 호출. 모든 처리는 메인 스레드에 위임."""
-        self._root.after(
-            0,
-            lambda: self._do_add_records(doc_name, date_str, records, content_hash))
-
-    def show_window(self):
-        """트레이 메뉴 / 첫 호출 시 사용. 메인 스레드에 위임."""
-        self._root.after(0, self._do_show_window)
-
-    # ── 메인 스레드 내부 처리 ──
-
-    def _do_add_records(self, doc_name, date_str, records, content_hash):
-        # 같은 (doc_name, date_str) 항목이 이미 _pending 에 있으면 교체
-        # → 같은 docx 재파싱 시 누적되지 않음.
-        self._pending = [p for p in self._pending
-                         if (p[0], p[1]) != (doc_name, date_str)]
-        self._pending.append((doc_name, date_str, records, content_hash))
-        # UI 가 아직 빌드 안됐으면 빌드 (창은 withdrawn 상태로 시작).
-        # 사용자가 트레이에서 명시적으로 열기 전까지는 보이지 않음.
-        if self._window is None:
-            self._build_ui()
-        # 창이 visible 할 때만 즉시 갱신, 그 외엔 dirty 만 표시
-        if self._is_visible():
-            self._refresh_tree()
-        else:
+        # 분기 결정 자체를 lock 안에서 — _show 가 시작되어 root/_alive 가
+        # 준비되는 사이의 race(=새 docx 마다 새 popup 창이 또 만들어지는
+        # 문제)를 막는다. 문제 사례: _show 시작 → _alive=True 설정 →
+        # tk.Tk() 가 수십 ms 걸리는 동안 self._root=None → 그 사이 두 번째
+        # add_records 가 if self._root and self._alive=False 로 보고 또 _show
+        # 호출 → 두 번째 popup 창 생성.
+        root = None
+        need_show = False
+        with self._lock:
+            self._pending.append((doc_name, date_str, records, content_hash))
             self._dirty = True
+            if self._root and self._alive:
+                root = self._root
+            elif not self._show_starting:
+                self._show_starting = True
+                need_show = True
+            # 그 외(=이미 다른 add_records 가 _show 시작 중) → 그냥 누적
 
-    def _do_show_window(self):
-        if self._window is None:
-            self._build_ui()
+        if root is not None:
+            try:
+                root.after(0, self._maybe_refresh)
+                return
+            except Exception:
+                pass
+
+        if need_show:
+            threading.Thread(target=self._show, daemon=True).start()
+
+    def _maybe_refresh(self):
+        """메인 스레드: 창이 visible(normal) 일 때만 즉시 갱신.
+        iconic/withdrawn/zoomed-but-iconified 면 _dirty 만 두고 아무 것도
+        안 함 → Treeview 가 안 만져지므로 창이 떠오를 여지가 없음."""
         try:
-            self._window.deiconify()
-            self._window.lift()
-            self._window.focus_force()
+            st = self._root.state()
+        except Exception:
+            return
+        if st == 'normal' and self._dirty:
+            self._refresh_and_clear_dirty()
+
+    def _refresh_and_clear_dirty(self):
+        self._dirty = False
+        self._refresh_tree()
+
+    def _on_window_map(self, event):
+        """창이 다시 보이는 시점(deiconify, 사용자가 taskbar 에서 복원 등)
+        에 누적된 pending 데이터로 트리 갱신."""
+        if event.widget is not self._root:
+            return
+        if self._dirty:
+            self._refresh_and_clear_dirty()
+
+    def _restore_window(self):
+        """트레이 메뉴 등에서 호출: 최소화/숨김된 창을 복원하고 포커스."""
+        try:
+            if self._root.state() == 'withdrawn':
+                self._root.deiconify()
+            elif self._root.state() == 'iconic':
+                self._root.deiconify()
+            self._root.lift()
+            self._root.focus_force()
         except Exception:
             pass
-        if self._dirty:
-            self._dirty = False
-            self._refresh_tree()
 
-    def _is_visible(self):
-        if self._window is None:
-            return False
-        try:
-            return self._window.state() == 'normal'
-        except Exception:
-            return False
-
-    # ── UI 빌드 (한 번만) ──
-
-    def _build_ui(self):
-        win = tk.Toplevel(self._root)
-        self._window = win
-        win.withdraw()  # 빌드 직후 숨김 — show_window 로만 표시
-        win.title('설비일보 파서 (Word)')
-        win.geometry('1300x650')
-        win.resizable(True, True)
-        # X 버튼: destroy 가 아니라 withdraw → 트레이로 숨김 (재사용)
-        win.protocol('WM_DELETE_WINDOW', self._on_close)
-        _apply_dark_theme(win)
-        root = win  # 이하 기존 위젯 빌드 코드와의 호환을 위해 별칭
+    def _show(self):
+        # root 를 먼저 만들고 그 다음 _alive=True. add_records 는 lock 안에서
+        # (root and _alive) 를 검사하므로 둘 중 하나라도 None/False 면 새
+        # _show 시작 가능 — 이 순서가 어긋나면 race 발생.
+        root = tk.Tk()
+        with self._lock:
+            self._root = root
+            self._alive = True
+            self._show_starting = False
+        root.title('설비일보 파서 (Word)')
+        root.geometry('1300x650')
+        root.resizable(True, True)
+        root.protocol('WM_DELETE_WINDOW', self._on_close)
+        # 창이 다시 보이는 시점에 누적된 pending 갱신
+        root.bind('<Map>', self._on_window_map)
+        _apply_dark_theme(root)
 
         # ── 상단 정보 바 ──
         top_bar = tk.Frame(root, bg=C['bg_surface'], height=36)
@@ -912,11 +935,12 @@ class ParseResultPopup:
                 self._db_records = []
 
         self._refresh_tree()
-        # mainloop 는 main() 의 메인 스레드에서 도므로 여기선 호출하지 않음.
+        root.mainloop()
+        self._alive = False
 
     # ── Treeview 갱신 ──
     def _refresh_tree(self):
-        if self._window is None:
+        if not self._root:
             return
 
         with self._lock:
@@ -1028,7 +1052,7 @@ class ParseResultPopup:
         else:
             current_val = values[col_idx] if col_idx < len(values) else ''
 
-        edit_win = tk.Toplevel(self._window)
+        edit_win = tk.Toplevel(self._root)
         edit_win.title(f'{col_name} 편집')
         edit_win.geometry('500x300')
         edit_win.configure(bg=C['bg_panel'])
@@ -1156,13 +1180,13 @@ class ParseResultPopup:
         default = '전체.csv' if is_all else self._csv_preview_var.get()
         # 기본 저장 경로: autosave 폴더
         os.makedirs(AUTOSAVE_DIR, exist_ok=True)
-        path = filedialog.asksaveasfilename(parent=self._window, title='CSV 저장',
+        path = filedialog.asksaveasfilename(parent=self._root, title='CSV 저장',
             defaultextension='.csv', filetypes=[('CSV', '*.csv')],
             initialfile=default, initialdir=AUTOSAVE_DIR)
         if not path:
             return
         count = export_csv(self.db_path, path, start_date=sd, end_date=ed)
-        messagebox.showinfo('완료', f'{count}건 내보내기 완료\n경로: {path}', parent=self._window)
+        messagebox.showinfo('완료', f'{count}건 내보내기 완료\n경로: {path}', parent=self._root)
         # 내보내기 후 DB 이력 재로드 + 날짜 목록 갱신 (내보내기 상태 반영)
         if self.db_path:
             try:
@@ -1172,40 +1196,26 @@ class ParseResultPopup:
         self._refresh_tree()
 
     def _on_close(self):
-        # destroy 하지 않고 withdraw → 트레이는 살아있고 다음에 다시
-        # show_window 로 deiconify 가능. (mainloop 가 메인 스레드에서 돌므로
-        # destroy 하면 전체 앱이 종료됨)
-        if self._window is not None:
+        with self._lock:
+            self._alive = False
+            r = self._root
+            self._root = None
+        if r is not None:
             try:
-                self._window.withdraw()
+                r.destroy()
             except Exception:
                 pass
 
 
-def ask_date_input(root, doc_name):
-    """워커 스레드(WordWatcher) 에서 호출됨. simpledialog 는 메인 스레드에서
-    띄워야 하므로 root.after 로 위임하고 Event 로 결과를 기다린다.
-    이전 버전처럼 자체 tk.Tk() 를 만들지 않음 (메인 root 와 충돌 회피)."""
-    result = [None]
-    done = threading.Event()
-
-    def _show():
-        try:
-            result[0] = simpledialog.askstring(
-                '날짜 입력',
-                f'"{doc_name}"에서 날짜를 찾을 수 없습니다.\n날짜를 입력해 주십시오 (예: 2024-05-03):',
-                parent=root)
-        except Exception:
-            result[0] = None
-        finally:
-            done.set()
-
-    try:
-        root.after(0, _show)
-    except Exception:
-        return None
-    done.wait()
-    return result[0]
+def ask_date_input(doc_name):
+    root = tk.Tk()
+    root.withdraw()
+    root.attributes('-topmost', True)
+    date_str = simpledialog.askstring('날짜 입력',
+        f'"{doc_name}"에서 날짜를 찾을 수 없습니다.\n날짜를 입력해 주십시오 (예: 2024-05-03):',
+        parent=root)
+    root.destroy()
+    return date_str
 
 # ─────────────────────────────────────────────
 # Tray
@@ -1222,10 +1232,9 @@ def create_icon_image():
 
 
 class TrayApp:
-    def __init__(self, db_path, popup, on_quit=None):
+    def __init__(self, db_path, save_all_callback=None):
         self.db_path = db_path
-        self.popup = popup
-        self.on_quit = on_quit or (lambda: None)
+        self.save_all_callback = save_all_callback or (lambda p: None)
         self.icon = None
         self.auto_save = False
 
@@ -1249,10 +1258,17 @@ class TrayApp:
             self.icon.notify(msg, '설비일보 Word 파서')
 
     def _show_viewer(self, icon, item):
-        # popup 은 메인 스레드 root 위 Toplevel. show_window 가 root.after
-        # 로 메인 스레드에 deiconify 위임.
-        if self.popup is not None:
-            self.popup.show_window()
+        popup = ParseResultPopup.get_or_create(
+            on_save_all=self.save_all_callback, db_path=self.db_path)
+        if not popup._alive:
+            threading.Thread(target=popup._show, daemon=True).start()
+        else:
+            # 이미 살아있는 창이 최소화/숨김 상태면 복원. _on_window_map 이
+            # 자동으로 누적된 pending 을 트리에 반영함.
+            try:
+                popup._root.after(0, popup._restore_window)
+            except Exception:
+                pass
 
     def _set_confirm(self, icon, item):
         self.auto_save = False
@@ -1262,11 +1278,6 @@ class TrayApp:
 
     def _quit(self, icon, item):
         icon.stop()
-        # 메인 스레드 mainloop 종료 콜백
-        try:
-            self.on_quit()
-        except Exception:
-            pass
 
 # ─────────────────────────────────────────────
 # Main
@@ -1284,11 +1295,6 @@ def main():
 
     init_db(DB_PATH)
 
-    # 메인 스레드 tk.Tk() — 모든 tkinter 호출의 단일 owner.
-    # 루트 자체는 사용자에게 보이지 않게 withdraw, 실제 뷰어는 Toplevel 로.
-    root = tk.Tk()
-    root.withdraw()
-
     def save_all(pending):
         for doc_name, date_str, records, content_hash in pending:
             delete_by_source(DB_PATH, doc_name, date_str)
@@ -1296,8 +1302,7 @@ def main():
         total = sum(len(r) for _, _, r, _ in pending)
         tray.notify(f'전체 저장 완료 ({len(pending)}파일, {total}건)')
 
-    popup = ParseResultPopup(root, on_save_all=save_all, db_path=DB_PATH)
-    tray = TrayApp(DB_PATH, popup=popup, on_quit=lambda: root.after(0, root.quit))
+    tray = TrayApp(DB_PATH, save_all_callback=save_all)
 
     def on_new_parse(doc_name, date_str, records, content_hash):
         if tray.auto_save:
@@ -1306,6 +1311,7 @@ def main():
             tray.notify(f'설비일보 {date_str} 저장 완료 ({len(records)}건)')
         else:
             tray.notify(f'설비일보 {date_str} 파싱 완료 ({len(records)}건)')
+            popup = ParseResultPopup.get_or_create(on_save_all=save_all, db_path=DB_PATH)
             popup.add_records(doc_name, date_str, records, content_hash)
 
     def on_duplicate_same(doc_name, date_str):
@@ -1313,13 +1319,14 @@ def main():
 
     def on_duplicate_changed(doc_name, date_str, records, content_hash):
         tray.notify(f'내용 변경 감지 ({date_str})')
+        popup = ParseResultPopup.get_or_create(on_save_all=save_all, db_path=DB_PATH)
         popup.add_records(doc_name, date_str, records, content_hash)
 
     def on_no_table(doc_name):
         tray.notify(f'파싱 대상 아님: {doc_name}')
 
     def on_date_missing(doc_name):
-        return ask_date_input(root, doc_name)
+        return ask_date_input(doc_name)
 
     watcher = WordWatcher(
         db_path=DB_PATH, on_new_parse=on_new_parse,
@@ -1327,19 +1334,8 @@ def main():
         on_duplicate_changed=on_duplicate_changed,
         on_date_missing=on_date_missing, on_no_table=on_no_table)
     watcher.start()
-    # tray 는 백그라운드 스레드 (pystray 자체 루프 사용). 메인 스레드는
-    # tkinter mainloop 만 돌린다.
-    threading.Thread(target=tray.start, daemon=True).start()
-
-    try:
-        root.mainloop()
-    finally:
-        watcher.stop()
-        try:
-            if tray.icon:
-                tray.icon.stop()
-        except Exception:
-            pass
+    tray.start()
+    watcher.stop()
 
     try:
         msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)

@@ -651,6 +651,7 @@ class ParseResultPopup:
         self._root = None
         self._tree = None
         self._row_records = {}  # Treeview item id → 원본 record dict (개행 포함)
+        self._dirty = False     # 최소화 중 누적된 미반영 pending 존재 여부
         self._date_listbox = None
         self._info_var = None
         self._db_records = []
@@ -659,40 +660,43 @@ class ParseResultPopup:
     def add_records(self, doc_name, date_str, records, content_hash):
         with self._lock:
             self._pending.append((doc_name, date_str, records, content_hash))
+            self._dirty = True
         if self._root and self._alive:
-            # 새 docx 가 열릴 때마다 _refresh_tree 가 창을 자동으로 활성화
-            # /최대화하지 않도록 현재 창 상태를 보존하고 갱신 후 복원
-            self._root.after(0, self._refresh_preserving_state)
+            # 창이 normal(=visible) 상태일 때만 즉시 갱신.
+            # iconic/withdrawn 이면 데이터만 누적하고, 사용자가 창을 다시
+            # 열거나 트레이 메뉴로 호출할 때 일괄 갱신 → 최소화한 창이
+            # 자동으로 떠오르지 않음.
+            try:
+                state = self._root.state()
+            except Exception:
+                state = 'normal'
+            if state == 'normal':
+                self._root.after(0, self._refresh_and_clear_dirty)
+            # iconic/withdrawn → 아무 것도 하지 않음 (tray.notify 만 표시됨)
         else:
             threading.Thread(target=self._show, daemon=True).start()
 
-    def _refresh_preserving_state(self):
-        """_refresh_tree 호출 전후로 root 의 표시 상태(최소화/withdrawn/zoomed)
-        를 복원. 사용자가 최소화해 둔 창이 새 파싱 결과 도착 시 자동으로
-        떠오르는 것을 방지."""
-        saved = None
-        try:
-            saved = self._root.state()
-        except Exception:
-            pass
+    def _refresh_and_clear_dirty(self):
+        self._dirty = False
         self._refresh_tree()
-        if saved and saved != 'normal':
-            # tkinter 갱신이 끝난 뒤 한 박자 늦게 복원해야 효과 있음
-            try:
-                self._root.after(50, lambda s=saved: self._restore_window_state(s))
-            except Exception:
-                pass
 
-    def _restore_window_state(self, state):
+    def _on_window_map(self, event):
+        """창이 다시 보이는 시점(deiconify, 사용자가 taskbar 에서 복원 등)
+        에 누적된 pending 데이터로 트리 갱신."""
+        if event.widget is not self._root:
+            return
+        if self._dirty:
+            self._refresh_and_clear_dirty()
+
+    def _restore_window(self):
+        """트레이 메뉴 등에서 호출: 최소화/숨김된 창을 복원하고 포커스."""
         try:
-            if self._root.state() == state:
-                return
-            if state == 'iconic':
-                self._root.iconify()
-            elif state == 'withdrawn':
-                self._root.withdraw()
-            elif state == 'zoomed':
-                self._root.state('zoomed')
+            if self._root.state() == 'withdrawn':
+                self._root.deiconify()
+            elif self._root.state() == 'iconic':
+                self._root.deiconify()
+            self._root.lift()
+            self._root.focus_force()
         except Exception:
             pass
 
@@ -704,6 +708,8 @@ class ParseResultPopup:
         root.geometry('1300x650')
         root.resizable(True, True)
         root.protocol('WM_DELETE_WINDOW', self._on_close)
+        # 창이 다시 보이는 시점에 누적된 pending 갱신
+        root.bind('<Map>', self._on_window_map)
         _apply_dark_theme(root)
 
         # ── 상단 정보 바 ──
@@ -1224,6 +1230,13 @@ class TrayApp:
             on_save_all=self.save_all_callback, db_path=self.db_path)
         if not popup._alive:
             threading.Thread(target=popup._show, daemon=True).start()
+        else:
+            # 이미 살아있는 창이 최소화/숨김 상태면 복원. _on_window_map 이
+            # 자동으로 누적된 pending 을 트리에 반영함.
+            try:
+                popup._root.after(0, popup._restore_window)
+            except Exception:
+                pass
 
     def _set_confirm(self, icon, item):
         self.auto_save = False

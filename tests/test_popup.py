@@ -16,6 +16,15 @@ def _make_popup():
     return p
 
 
+def _make_dead_popup():
+    """창이 죽은(또는 아직 안 만들어진) 상태."""
+    p = ParseResultPopup(on_save_all=None, db_path=None)
+    p._alive = False
+    p._root = None
+    p._refresh_tree = MagicMock()
+    return p
+
+
 class TestAddRecordsDeferRefresh:
     """창이 최소화/숨김 상태일 때 _refresh_tree 가 호출되지 않아야 함."""
 
@@ -106,6 +115,78 @@ class TestOnWindowMap:
         p._on_window_map(event)
         p._refresh_tree.assert_not_called()
         assert p._dirty is True  # dirty 유지
+
+
+class TestShowStartRace:
+    """새 docx 가 들어올 때마다 새 popup 창이 한 개씩 더 떠오르던 race 가
+    재발하지 않는지 검증.
+
+    시나리오: _alive=False, _root=None 인 상태에서 두 add_records 가 거의
+    동시에 호출되면 두 번째 호출은 _show 를 또 시작하지 않고 첫 호출이
+    띄울 창에 데이터를 누적해야 한다."""
+
+    def test_first_add_starts_show_thread(self, monkeypatch):
+        from word_crawler import ParseResultPopup
+        thread_starts = []
+        def fake_thread(target, daemon=None):
+            class T:
+                def start(self_inner):
+                    thread_starts.append(target)
+            return T()
+        monkeypatch.setattr('word_crawler.threading.Thread', fake_thread)
+
+        p = _make_dead_popup()
+        p.add_records('a.docx', '2024-05-03', [{'k': 1}], 'h1')
+        assert len(thread_starts) == 1
+        assert p._show_starting is True
+
+    def test_second_add_during_show_starting_does_not_start_again(self, monkeypatch):
+        thread_starts = []
+        def fake_thread(target, daemon=None):
+            class T:
+                def start(self_inner):
+                    thread_starts.append(target)
+            return T()
+        monkeypatch.setattr('word_crawler.threading.Thread', fake_thread)
+
+        p = _make_dead_popup()
+        # 첫 호출 → _show 스레드 1회 시작
+        p.add_records('a.docx', '2024-05-03', [{'k': 1}], 'h1')
+        assert len(thread_starts) == 1
+        # _show 가 아직 root 를 만들기 전(=show_starting=True, _alive=False)
+        # 이 상태에서 두 번째 add_records 들어옴
+        assert p._show_starting is True
+        assert p._alive is False
+        p.add_records('b.docx', '2024-05-03', [{'k': 2}], 'h2')
+        # 두 번째는 _show 를 또 시작하지 않아야 함
+        assert len(thread_starts) == 1
+        # 데이터는 모두 누적
+        assert len(p._pending) == 2
+
+    def test_show_clears_starting_flag_under_lock(self, monkeypatch):
+        """_show 가 시작되고 root 가 준비되면 _show_starting=False 로 풀려서
+        그 뒤 _on_close 후의 새 add_records 는 다시 _show 를 시작할 수 있어야 함."""
+        thread_starts = []
+        def fake_thread(target, daemon=None):
+            class T:
+                def start(self_inner):
+                    thread_starts.append(target)
+            return T()
+        monkeypatch.setattr('word_crawler.threading.Thread', fake_thread)
+
+        p = _make_dead_popup()
+        p.add_records('a.docx', '2024-05-03', [{'k': 1}], 'h1')
+        # 시뮬레이션: _show 본체가 실행되어 root 생성 후 alive=True 설정
+        with p._lock:
+            p._root = MagicMock()
+            p._alive = True
+            p._show_starting = False
+        # 사용자가 창 닫음
+        p._on_close()
+        assert p._alive is False and p._root is None
+        # 새 add_records → 다시 _show 시작 가능해야
+        p.add_records('c.docx', '2024-05-03', [{'k': 3}], 'h3')
+        assert len(thread_starts) == 2
 
 
 class TestRestoreWindow:

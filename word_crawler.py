@@ -652,25 +652,40 @@ class ParseResultPopup:
         self._tree = None
         self._row_records = {}  # Treeview item id → 원본 record dict (개행 포함)
         self._dirty = False     # 최소화 중 누적된 미반영 pending 존재 여부
+        self._show_starting = False  # _show 스레드 시작 ~ root 준비 사이 race 가드
         self._date_listbox = None
         self._info_var = None
         self._db_records = []
         self._current_filter_date = None
 
     def add_records(self, doc_name, date_str, records, content_hash):
+        # 분기 결정 자체를 lock 안에서 — _show 가 시작되어 root/_alive 가
+        # 준비되는 사이의 race(=새 docx 마다 새 popup 창이 또 만들어지는
+        # 문제)를 막는다. 문제 사례: _show 시작 → _alive=True 설정 →
+        # tk.Tk() 가 수십 ms 걸리는 동안 self._root=None → 그 사이 두 번째
+        # add_records 가 if self._root and self._alive=False 로 보고 또 _show
+        # 호출 → 두 번째 popup 창 생성.
+        root = None
+        need_show = False
         with self._lock:
             self._pending.append((doc_name, date_str, records, content_hash))
             self._dirty = True
-        # 호출자는 WordWatcher 폴링 스레드. tkinter 는 thread-safe 가
-        # 아니므로 root.state() 등 모든 root 조작을 메인 스레드에 위임.
-        # 그렇지 않으면 백그라운드 호출이 부작용으로 창을 활성화시킨다.
-        if self._root and self._alive:
+            if self._root and self._alive:
+                root = self._root
+            elif not self._show_starting:
+                self._show_starting = True
+                need_show = True
+            # 그 외(=이미 다른 add_records 가 _show 시작 중) → 그냥 누적
+
+        if root is not None:
             try:
-                self._root.after(0, self._maybe_refresh)
+                root.after(0, self._maybe_refresh)
                 return
             except Exception:
                 pass
-        threading.Thread(target=self._show, daemon=True).start()
+
+        if need_show:
+            threading.Thread(target=self._show, daemon=True).start()
 
     def _maybe_refresh(self):
         """메인 스레드: 창이 visible(normal) 일 때만 즉시 갱신.
@@ -708,9 +723,14 @@ class ParseResultPopup:
             pass
 
     def _show(self):
-        self._alive = True
+        # root 를 먼저 만들고 그 다음 _alive=True. add_records 는 lock 안에서
+        # (root and _alive) 를 검사하므로 둘 중 하나라도 None/False 면 새
+        # _show 시작 가능 — 이 순서가 어긋나면 race 발생.
         root = tk.Tk()
-        self._root = root
+        with self._lock:
+            self._root = root
+            self._alive = True
+            self._show_starting = False
         root.title('설비일보 파서 (Word)')
         root.geometry('1300x650')
         root.resizable(True, True)
@@ -1176,10 +1196,15 @@ class ParseResultPopup:
         self._refresh_tree()
 
     def _on_close(self):
-        self._alive = False
-        if self._root:
-            self._root.destroy()
+        with self._lock:
+            self._alive = False
+            r = self._root
             self._root = None
+        if r is not None:
+            try:
+                r.destroy()
+            except Exception:
+                pass
 
 
 def ask_date_input(doc_name):

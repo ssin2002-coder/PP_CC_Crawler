@@ -22,7 +22,7 @@ def _make_record(**overrides):
     base = {
         'date': '2024-05-03', 'source_file': 'test.docx', 'row_num': 2,
         'header1': '구분', 'val1': 'Day',
-        'content_col_name': 'A동', 'item_text': 'AHU-3 이상진동',
+        'content_col_name': 'A동', 'raw_text': 'AHU-3 이상진동',
         'raw_cell': 'AHU-3 이상진동\n\n보일러 점검',
         'header4': '비고', 'val4': '',
     }
@@ -62,9 +62,9 @@ class TestInsertAndQuery:
 
     def test_insert_multiple(self, db_path):
         records = [
-            _make_record(item_text='항목1'),
-            _make_record(item_text='항목2'),
-            _make_record(item_text='항목3'),
+            _make_record(raw_text='항목1'),
+            _make_record(raw_text='항목2'),
+            _make_record(raw_text='항목3'),
         ]
         insert_records(db_path, records, content_hash='abc123')
         conn = sqlite3.connect(db_path)
@@ -96,7 +96,7 @@ class TestDelete:
         assert len(rows) == 0
 
     def test_delete_by_ids(self, db_path):
-        insert_records(db_path, [_make_record(item_text='a'), _make_record(item_text='b')], content_hash='abc')
+        insert_records(db_path, [_make_record(raw_text='a'), _make_record(raw_text='b')], content_hash='abc')
         conn = sqlite3.connect(db_path)
         ids = [r[0] for r in conn.execute("SELECT id FROM facility_daily").fetchall()]
         conn.close()
@@ -113,7 +113,7 @@ class TestHistory:
         history = get_recent_history(db_path, limit=10)
         assert len(history) == 1
         assert isinstance(history[0], dict)
-        assert history[0]['item_text'] == 'AHU-3 이상진동'
+        assert history[0]['raw_text'] == 'AHU-3 이상진동'
 
 
 class TestHash:
@@ -125,16 +125,16 @@ class TestHash:
         assert len(h1) == 16
 
     def test_different_content_different_hash(self):
-        r1 = [_make_record(item_text='a')]
-        r2 = [_make_record(item_text='b')]
+        r1 = [_make_record(raw_text='a')]
+        r2 = [_make_record(raw_text='b')]
         assert compute_hash(r1) != compute_hash(r2)
 
 
 class TestExportCsv:
     def test_export_all(self, db_path, tmp_path):
         insert_records(db_path, [
-            _make_record(date='2024-04-01', item_text='항목1'),
-            _make_record(date='2024-05-03', item_text='항목2'),
+            _make_record(date='2024-04-01', raw_text='항목1'),
+            _make_record(date='2024-05-03', raw_text='항목2'),
         ], content_hash='abc')
         out = str(tmp_path / "out.csv")
         count = export_csv(db_path, out)
@@ -142,14 +142,29 @@ class TestExportCsv:
         with open(out, encoding='utf-8-sig') as f:
             reader = csv.reader(f)
             header = next(reader)
-            assert 'item_text' in header
+            assert 'raw_text' in header
             rows = list(reader)
             assert len(rows) == 2
 
+    def test_export_preserves_newlines_in_multiline_cols(self, db_path, tmp_path):
+        # 데이터 분석 시 split('\n') 으로 항목 분리할 수 있도록 CSV 셀에
+        # 원본 개행을 그대로 보존해야 한다(표준 CSV 는 quote 로 감싼다).
+        rec = _make_record(raw_text='- 베어링 발주\n- 임시조치')
+        rec['raw_cell'] = '*AHU\n - 베어링 발주\n - 임시조치'
+        insert_records(db_path, [rec], content_hash='abc')
+        out = str(tmp_path / "out.csv")
+        export_csv(db_path, out)
+        # csv 모듈이 quote 로 감싸진 멀티라인 셀을 복원해야 한다
+        with open(out, encoding='utf-8-sig', newline='') as f:
+            reader = csv.DictReader(f)
+            row = next(reader)
+        assert row['raw_text'] == '- 베어링 발주\n- 임시조치'
+        assert row['raw_cell'] == '*AHU\n - 베어링 발주\n - 임시조치'
+
     def test_export_date_range(self, db_path, tmp_path):
         insert_records(db_path, [
-            _make_record(date='2024-04-01', item_text='항목1'),
-            _make_record(date='2024-05-03', item_text='항목2'),
+            _make_record(date='2024-04-01', raw_text='항목1'),
+            _make_record(date='2024-05-03', raw_text='항목2'),
         ], content_hash='abc')
         out = str(tmp_path / "out.csv")
         count = export_csv(db_path, out, start_date='2024-05-01', end_date='2024-05-31')

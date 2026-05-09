@@ -1,0 +1,12 @@
+fingerprint:
+  auto_match_threshold: 0.85
+  candidate_threshold: 0.60
+extractor:
+  custom_patterns: {}
+  ocr_confidence_threshold: 0.6
+com:
+  max_retries: 3
+  timeout_seconds: 10
+  poll_interval_seconds: 3
+ui:
+  theme: "dark"

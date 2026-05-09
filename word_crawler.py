@@ -1,7 +1,7 @@
 """
 설비일보 Word 크롤러 (단일 파일)
 - 열린 Word 문서에서 설비일보 표를 자동 감지/파싱 (동적 헤더)
-- [현상][원인][조치] 태그 추출 + 2+ 개행으로 항목 분리
+- *제목 + 본문 형식 항목 추출 (2+ 개행으로 항목 분리)
 - SQLite 적재 + CSV 내보내기 → SQream 이관
 - 시스템 트레이 + tkinter 다크 테마 팝업 UI
 
@@ -43,9 +43,9 @@ from tkinter import ttk, simpledialog, filedialog, messagebox
 # Constants
 # ─────────────────────────────────────────────
 
-TAG_PATTERN = re.compile(r'\[(현상|원인|조치)\]\s*([^\r\n\[\]]+)')
-
 DATE_PATTERNS_TEXT = [
+    # "일자 : 2024년 5월 3일" 형식 우선
+    re.compile(r'일\s*자[:：\s]+(\d{4})\s*년\s*(\d{1,2})\s*월\s*(\d{1,2})\s*일'),
     re.compile(r'(\d{4})\s*[.\-/년]\s*(\d{1,2})\s*[.\-/월]\s*(\d{1,2})'),
     re.compile(r'(\d{2})\s*[.\-/]\s*(\d{1,2})\s*[.\-/]\s*(\d{1,2})'),
 ]
@@ -101,9 +101,6 @@ def init_db(db_path=None):
             val1             TEXT,
             content_col_name TEXT,
             title            TEXT,
-            phenomenon       TEXT,
-            cause            TEXT,
-            action           TEXT,
             raw_text         TEXT,
             raw_cell         TEXT,
             header4          TEXT,
@@ -121,6 +118,12 @@ def init_db(db_path=None):
         conn.execute('ALTER TABLE facility_daily ADD COLUMN exported_at TEXT')
     except Exception:
         pass
+    # 기존 DB 마이그레이션: phenomenon/cause/action 컬럼 제거 (SQLite 3.35+)
+    for col in ('phenomenon', 'cause', 'action'):
+        try:
+            conn.execute(f'ALTER TABLE facility_daily DROP COLUMN {col}')
+        except Exception:
+            pass
     conn.commit()
     conn.close()
 
@@ -131,13 +134,12 @@ def insert_records(db_path, records, content_hash=None):
         conn.execute('''
             INSERT INTO facility_daily
             (date, source_file, row_num, header1, val1, content_col_name,
-             title, phenomenon, cause, action, raw_text, raw_cell, header4, val4, content_hash)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+             title, raw_text, raw_cell, header4, val4, content_hash)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ''', (
             rec['date'], rec['source_file'], rec['row_num'],
             rec['header1'], rec['val1'], rec['content_col_name'],
-            rec.get('title', ''), rec.get('phenomenon', ''), rec.get('cause', ''), rec.get('action', ''),
-            rec.get('raw_text', ''), rec['raw_cell'],
+            rec.get('title', ''), rec.get('raw_text', ''), rec['raw_cell'],
             rec['header4'], rec['val4'], content_hash,
         ))
     conn.commit()
@@ -268,38 +270,35 @@ def _strip_numbering(text):
     return re.sub(r'^\d+\)\s*', '', text.strip(), flags=re.MULTILINE)
 
 
+_TITLE_LINE_RE = re.compile(r'^\*\s*(.+)$')
+
+
 def parse_item_block(text):
-    """한 블록(2+ 개행으로 분리된 단위)에서 title + [현상][원인][조치] 태그 추출.
-    [현상] 앞의 텍스트 → title. 태그가 없으면 raw_text에 전체 텍스트."""
+    """한 블록(2+ 개행으로 분리된 단위)을 title + raw_text 로 분리.
+
+    포맷:
+        *제목
+         - 내용 1
+         - 내용 2
+
+    `*` 로 시작하는 첫 줄은 title 로 추출하고 나머지 줄은 raw_text 에 이어
+    붙인다. `*` 라인이 없으면 title 은 비우고 전체 텍스트를 raw_text 에 둔다.
+    1) 2) 형식 번호 접두는 제거한다."""
     text = _strip_numbering(text)
-    parsed = {'title': '', 'phenomenon': '', 'cause': '', 'action': '', 'raw_text': ''}
+    parsed = {'title': '', 'raw_text': ''}
 
-    # [현상] 앞의 텍스트를 title로 추출
-    first_tag = re.search(r'\[(현상|원인|조치)\]', text)
-    if first_tag:
-        before = text[:first_tag.start()].strip()
-        if before:
-            parsed['title'] = before
+    body_lines = []
+    for line in text.split('\n'):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        m = _TITLE_LINE_RE.match(stripped)
+        if m and not parsed['title']:
+            parsed['title'] = m.group(1).strip()
+            continue
+        body_lines.append(stripped)
 
-    for match in TAG_PATTERN.finditer(text):
-        tag, content = match.group(1), match.group(2).strip()
-        if tag == '현상':
-            parsed['phenomenon'] = content
-        elif tag == '원인':
-            parsed['cause'] = content
-        elif tag == '조치':
-            parsed['action'] = content
-
-    if not parsed['phenomenon'] and not parsed['cause'] and not parsed['action']:
-        parsed['raw_text'] = text.strip()
-    else:
-        leftover = re.sub(r'\[(현상|원인|조치)\]\s*[^\r\n\[\]]+', '', text).strip()
-        leftover = '\n'.join(line.strip() for line in leftover.split('\n') if line.strip())
-        # title로 이미 추출한 부분 제거
-        if parsed['title'] and leftover.startswith(parsed['title']):
-            leftover = leftover[len(parsed['title']):].strip()
-        parsed['raw_text'] = leftover
-
+    parsed['raw_text'] = '\n'.join(body_lines)
     return parsed
 
 
@@ -328,10 +327,32 @@ def extract_date_from_filename(filename):
     return None
 
 
-def find_main_table_index(row_counts):
-    if not row_counts:
+REQUIRED_HEADERS = ('구분', 'UT동', '확산동', '전달사항')
+
+
+def format_multiline(text, sep=' | '):
+    """여러 줄 텍스트를 단일 줄 + 명시 구분자로 변환. 뷰어/CSV 출력에서
+    개행 구조가 사라지지 않도록 라인 사이에 ` | ` 같은 마커를 끼워 넣는다.
+    빈 줄은 제거한다."""
+    if not text:
+        return ''
+    s = str(text).replace('\r\n', '\n').replace('\r', '\n')
+    lines = [line.strip() for line in s.split('\n') if line.strip()]
+    return sep.join(lines)
+
+
+def find_main_table_index(headers_list):
+    """각 표의 1행 헤더 리스트(list[list[str]])를 받아 메인 표 인덱스를 반환.
+
+    REQUIRED_HEADERS(`구분`, `UT동`, `확산동`, `전달사항`) 가 1행에 모두
+    포함된 첫 번째 표를 메인 표로 선택. 매칭되는 표가 없으면 None."""
+    if not headers_list:
         return None
-    return row_counts.index(max(row_counts))
+    for idx, headers in enumerate(headers_list):
+        normalized = [re.sub(r'\s+', '', h or '') for h in headers]
+        if all(req in normalized for req in REQUIRED_HEADERS):
+            return idx
+    return None
 
 
 def parse_table_data(headers, rows_data, date_str, source_file):
@@ -366,9 +387,6 @@ def parse_table_data(headers, rows_data, date_str, source_file):
                     'val1': val1,
                     'content_col_name': col_name,
                     'title': parsed['title'],
-                    'phenomenon': parsed['phenomenon'],
-                    'cause': parsed['cause'],
-                    'action': parsed['action'],
                     'raw_text': parsed['raw_text'],
                     'raw_cell': raw_cell,
                     'header4': h4_name,
@@ -453,24 +471,23 @@ class WordWatcher:
     def _parse_document(self, doc):
         if doc.Tables.Count == 0:
             return None
-        row_counts = []
+        # 각 표의 1행 헤더를 수집해 REQUIRED_HEADERS 매칭으로 메인 표 선정
+        headers_list = []
         for t in range(1, doc.Tables.Count + 1):
             try:
-                row_counts.append(doc.Tables(t).Rows.Count)
+                row1 = doc.Tables(t).Rows(1)
+                cells = [clean_cell_text(row1.Cells(c).Range.Text)
+                         for c in range(1, row1.Cells.Count + 1)]
+                headers_list.append(cells)
             except Exception:
-                row_counts.append(0)
-        table_idx = find_main_table_index(row_counts)
+                headers_list.append([])
+        table_idx = find_main_table_index(headers_list)
         if table_idx is None:
             return None
         table = doc.Tables(table_idx + 1)
-        headers = []
-        row1 = table.Rows(1)
-        for c in range(1, row1.Cells.Count + 1):
-            headers.append(clean_cell_text(row1.Cells(c).Range.Text))
-        date_str = None
-        table_range = table.Range
-        doc_text_before = doc.Range(0, table_range.Start).Text
-        date_str = extract_date_from_text(doc_text_before)
+        headers = headers_list[table_idx]
+        # 본문 + 텍스트 박스(Shape) + 헤더/푸터 텍스트를 모아서 날짜 검색
+        date_str = extract_date_from_text(self._collect_text_for_date(doc, table))
         if date_str is None:
             date_str = extract_date_from_filename(doc.Name)
         if date_str is None:
@@ -487,6 +504,57 @@ class WordWatcher:
         records = parse_table_data(headers, rows_data, date_str, doc.Name)
         return (records, date_str) if records else None
 
+    @staticmethod
+    def _collect_text_for_date(doc, table):
+        """날짜 추출용 텍스트 묶음. 표 위 본문 + 모든 Shape(텍스트 박스) +
+        헤더/푸터 텍스트를 합쳐 반환. 일부 양식은 날짜를 본문 텍스트가 아닌
+        텍스트 박스에 그려두기 때문에 Shapes 까지 훑어야 함."""
+        parts = []
+        # 본문에서 표 위쪽 텍스트
+        try:
+            parts.append(doc.Range(0, table.Range.Start).Text)
+        except Exception:
+            pass
+        # 떠 있는 Shape (텍스트 박스 포함)
+        try:
+            for i in range(1, doc.Shapes.Count + 1):
+                try:
+                    shape = doc.Shapes(i)
+                    tf = shape.TextFrame
+                    if tf.HasText:
+                        parts.append(tf.TextRange.Text)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        # 인라인 Shape (드물게 텍스트 박스가 인라인일 수 있음)
+        try:
+            for i in range(1, doc.InlineShapes.Count + 1):
+                try:
+                    ish = doc.InlineShapes(i)
+                    tr = ish.Range
+                    parts.append(tr.Text)
+                except Exception:
+                    continue
+        except Exception:
+            pass
+        # 섹션별 헤더/푸터
+        try:
+            for s in range(1, doc.Sections.Count + 1):
+                section = doc.Sections(s)
+                for hf in (section.Headers, section.Footers):
+                    try:
+                        for j in range(1, hf.Count + 1):
+                            try:
+                                parts.append(hf(j).Range.Text)
+                            except Exception:
+                                continue
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+        return '\n'.join(p for p in parts if p)
+
     def reset_seen(self):
         self._seen_docs.clear()
 
@@ -494,10 +562,24 @@ class WordWatcher:
 # UI
 # ─────────────────────────────────────────────
 
+MULTILINE_TREE_COLS = {'title', 'raw_text', 'raw_cell'}
+
+
 def _flat(text):
+    """뷰어용 단일 라인 변환. 멀티라인은 ` | ` 구분자로 합친다."""
     if not text:
         return ''
-    return ' '.join(str(text).replace('\r', ' ').replace('\n', ' ').split())
+    return format_multiline(str(text))
+
+
+def _tree_cell(rec, col_id):
+    """Treeview 셀 표시용. 모든 컬럼을 한 줄로 변환. 멀티라인 컬럼은
+    ` | ` 구분자로 합쳐 한 줄에 들어가게 한다(원본 \\n 은 record dict 에
+    그대로 보존되어 더블클릭 팝업에서 사용)."""
+    val = rec.get(col_id, '')
+    if not val:
+        return ''
+    return format_multiline(str(val))
 
 
 def _apply_dark_theme(root):
@@ -568,27 +650,93 @@ class ParseResultPopup:
         self._lock = threading.Lock()
         self._root = None
         self._tree = None
+        self._row_records = {}  # Treeview item id → 원본 record dict (개행 포함)
+        self._dirty = False     # 최소화 중 누적된 미반영 pending 존재 여부
+        self._show_starting = False  # _show 스레드 시작 ~ root 준비 사이 race 가드
         self._date_listbox = None
         self._info_var = None
         self._db_records = []
         self._current_filter_date = None
 
     def add_records(self, doc_name, date_str, records, content_hash):
+        # 분기 결정 자체를 lock 안에서 — _show 가 시작되어 root/_alive 가
+        # 준비되는 사이의 race(=새 docx 마다 새 popup 창이 또 만들어지는
+        # 문제)를 막는다. 문제 사례: _show 시작 → _alive=True 설정 →
+        # tk.Tk() 가 수십 ms 걸리는 동안 self._root=None → 그 사이 두 번째
+        # add_records 가 if self._root and self._alive=False 로 보고 또 _show
+        # 호출 → 두 번째 popup 창 생성.
+        root = None
+        need_show = False
         with self._lock:
             self._pending.append((doc_name, date_str, records, content_hash))
-        if self._root and self._alive:
-            self._root.after(0, self._refresh_tree)
-        else:
+            self._dirty = True
+            if self._root and self._alive:
+                root = self._root
+            elif not self._show_starting:
+                self._show_starting = True
+                need_show = True
+            # 그 외(=이미 다른 add_records 가 _show 시작 중) → 그냥 누적
+
+        if root is not None:
+            try:
+                root.after(0, self._maybe_refresh)
+                return
+            except Exception:
+                pass
+
+        if need_show:
             threading.Thread(target=self._show, daemon=True).start()
 
+    def _maybe_refresh(self):
+        """메인 스레드: 창이 visible(normal) 일 때만 즉시 갱신.
+        iconic/withdrawn/zoomed-but-iconified 면 _dirty 만 두고 아무 것도
+        안 함 → Treeview 가 안 만져지므로 창이 떠오를 여지가 없음."""
+        try:
+            st = self._root.state()
+        except Exception:
+            return
+        if st == 'normal' and self._dirty:
+            self._refresh_and_clear_dirty()
+
+    def _refresh_and_clear_dirty(self):
+        self._dirty = False
+        self._refresh_tree()
+
+    def _on_window_map(self, event):
+        """창이 다시 보이는 시점(deiconify, 사용자가 taskbar 에서 복원 등)
+        에 누적된 pending 데이터로 트리 갱신."""
+        if event.widget is not self._root:
+            return
+        if self._dirty:
+            self._refresh_and_clear_dirty()
+
+    def _restore_window(self):
+        """트레이 메뉴 등에서 호출: 최소화/숨김된 창을 복원하고 포커스."""
+        try:
+            if self._root.state() == 'withdrawn':
+                self._root.deiconify()
+            elif self._root.state() == 'iconic':
+                self._root.deiconify()
+            self._root.lift()
+            self._root.focus_force()
+        except Exception:
+            pass
+
     def _show(self):
-        self._alive = True
+        # root 를 먼저 만들고 그 다음 _alive=True. add_records 는 lock 안에서
+        # (root and _alive) 를 검사하므로 둘 중 하나라도 None/False 면 새
+        # _show 시작 가능 — 이 순서가 어긋나면 race 발생.
         root = tk.Tk()
-        self._root = root
+        with self._lock:
+            self._root = root
+            self._alive = True
+            self._show_starting = False
         root.title('설비일보 파서 (Word)')
         root.geometry('1300x650')
         root.resizable(True, True)
         root.protocol('WM_DELETE_WINDOW', self._on_close)
+        # 창이 다시 보이는 시점에 누적된 pending 갱신
+        root.bind('<Map>', self._on_window_map)
         _apply_dark_theme(root)
 
         # ── 상단 정보 바 ──
@@ -641,10 +789,7 @@ class ParseResultPopup:
             ('val1',             'val1',              '구분',   60),
             ('content_col_name', 'content_col_name',  '영역',   60),
             ('title',            'title',             '제목',  140),
-            ('phenomenon',       'phenomenon',        '현상',  170),
-            ('cause',            'cause',             '원인',  170),
-            ('action',           'action',            '조치',  170),
-            ('raw_text',         'raw_text',          '기타',  170),
+            ('raw_text',         'raw_text',          '내용',  240),
             ('raw_cell',         'raw_cell',          '원문',  150),
             ('header4',          'header4',           '헤더4',  60),
             ('val4',             'val4',              '비고',  100),
@@ -660,7 +805,7 @@ class ParseResultPopup:
                                           height=1, selectmode='none')
         for col_id, db_name, label, w in self._col_defs:
             self._header_tree.heading(col_id, text=db_name, anchor='center')
-            self._header_tree.column(col_id, width=w, minwidth=40, stretch=True, anchor='center')
+            self._header_tree.column(col_id, width=w, minwidth=40, stretch=False, anchor='center')
         self._header_tree.tag_configure('label_row',
                                          background=C['bg_surface'], foreground=C['text_accent'])
         display_labels = tuple(d[2] for d in self._col_defs)
@@ -677,9 +822,18 @@ class ParseResultPopup:
         sy = ttk.Scrollbar(data_frame, orient='vertical')
         sx = ttk.Scrollbar(tree_frame, orient='horizontal')
 
+        # 데이터 Treeview 전용 스타일: 멀티라인 셀에 맞춰 rowheight 동적 조정
+        data_style = ttk.Style(root)
+        data_style.configure('Data.Treeview',
+                              background=C['bg_panel'], foreground=C['text1'],
+                              fieldbackground=C['bg_panel'], borderwidth=0,
+                              font=('맑은 고딕', 9), rowheight=24)
+        data_style.map('Data.Treeview',
+                        background=[('selected', C['accent'])],
+                        foreground=[('selected', 'white')])
         self._tree = ttk.Treeview(data_frame, columns=cols, show='headings',
                                    yscrollcommand=sy.set, xscrollcommand=sx.set,
-                                   selectmode='extended')
+                                   selectmode='extended', style='Data.Treeview')
         sy.config(command=self._tree.yview)
 
         # 가로 스크롤을 두 Treeview 동기화
@@ -691,7 +845,7 @@ class ParseResultPopup:
 
         for col_id, db_name, label, w in self._col_defs:
             self._tree.heading(col_id, text='')  # 데이터 Treeview 헤더는 숨김 (고정 헤더가 대체)
-            self._tree.column(col_id, width=w, minwidth=40, stretch=True)
+            self._tree.column(col_id, width=w, minwidth=40, stretch=False)
 
         # 데이터 Treeview 네이티브 헤더 숨김
         style = ttk.Style(root)
@@ -833,9 +987,10 @@ class ParseResultPopup:
 
         # Treeview
         self._tree.delete(*self._tree.get_children())
+        self._row_records.clear()
 
         def _rec_to_values(rec):
-            return tuple(_flat(rec.get(d[1], '')) for d in self._col_defs)
+            return tuple(_tree_cell(rec, d[0]) for d in self._col_defs)
 
         for doc_name, date_str, records, content_hash in pending_copy:
             if self._current_filter_date and date_str != self._current_filter_date:
@@ -843,15 +998,18 @@ class ParseResultPopup:
             for rec in records:
                 # pending 레코드에 content_hash 추가 (표시용)
                 rec_with_hash = dict(rec, content_hash=content_hash or '')
-                self._tree.insert('', 'end', tags=('new', f'p:{doc_name}:{date_str}'),
+                iid = self._tree.insert('', 'end',
+                    tags=('new', f'p:{doc_name}:{date_str}'),
                     values=_rec_to_values(rec_with_hash))
+                self._row_records[iid] = rec_with_hash
 
         for rec in self._db_records:
             d = rec.get('date', '')
             if self._current_filter_date and d != self._current_filter_date:
                 continue
-            self._tree.insert('', 'end', tags=(f'db:{rec.get("id","")}',),
+            iid = self._tree.insert('', 'end', tags=(f'db:{rec.get("id","")}',),
                 values=_rec_to_values(rec))
+            self._row_records[iid] = rec
 
         total_db = len(self._db_records)
         total_new = sum(len(r) for _, _, r, _ in pending_copy)
@@ -884,8 +1042,15 @@ class ParseResultPopup:
             return
         col_idx = int(col.replace('#', '')) - 1
         col_name = self._col_defs[col_idx][2] if col_idx < len(self._col_defs) else ''
+        col_id = self._col_defs[col_idx][0] if col_idx < len(self._col_defs) else ''
         values = list(self._tree.item(item, 'values'))
-        current_val = values[col_idx] if col_idx < len(values) else ''
+        # 팝업에는 _row_records 의 원본 값(개행 포함) 표시.
+        # 폴백으로 Treeview 셀의 한 줄 표시값 사용.
+        rec = self._row_records.get(item)
+        if rec is not None and col_id in rec:
+            current_val = str(rec.get(col_id, '') or '')
+        else:
+            current_val = values[col_idx] if col_idx < len(values) else ''
 
         edit_win = tk.Toplevel(self._root)
         edit_win.title(f'{col_name} 편집')
@@ -903,8 +1068,18 @@ class ParseResultPopup:
         btn_frame.pack(side='bottom', fill='x', padx=10, pady=10)
 
         def apply_edit():
-            new_val = _flat(text_widget.get('1.0', 'end').strip())
-            values[col_idx] = new_val
+            raw = text_widget.get('1.0', 'end').strip()
+            if col_id in MULTILINE_TREE_COLS:
+                # 멀티라인 컬럼은 개행 보존, 빈 줄만 제거
+                stored_val = '\n'.join(
+                    line.rstrip() for line in raw.split('\n') if line.strip())
+            else:
+                stored_val = _flat(raw)
+            # 원본 record 갱신 (다음 더블클릭에서도 멀티라인 유지)
+            if rec is not None and col_id:
+                rec[col_id] = stored_val
+            # Treeview 셀은 항상 한 줄로 표시
+            values[col_idx] = _tree_cell({col_id: stored_val}, col_id) if col_id else stored_val
             self._tree.item(item, values=values)
             edit_win.destroy()
 
@@ -1021,10 +1196,15 @@ class ParseResultPopup:
         self._refresh_tree()
 
     def _on_close(self):
-        self._alive = False
-        if self._root:
-            self._root.destroy()
+        with self._lock:
+            self._alive = False
+            r = self._root
             self._root = None
+        if r is not None:
+            try:
+                r.destroy()
+            except Exception:
+                pass
 
 
 def ask_date_input(doc_name):
@@ -1082,6 +1262,13 @@ class TrayApp:
             on_save_all=self.save_all_callback, db_path=self.db_path)
         if not popup._alive:
             threading.Thread(target=popup._show, daemon=True).start()
+        else:
+            # 이미 살아있는 창이 최소화/숨김 상태면 복원. _on_window_map 이
+            # 자동으로 누적된 pending 을 트리에 반영함.
+            try:
+                popup._root.after(0, popup._restore_window)
+            except Exception:
+                pass
 
     def _set_confirm(self, icon, item):
         self.auto_save = False

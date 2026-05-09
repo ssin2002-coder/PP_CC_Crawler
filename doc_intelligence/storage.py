@@ -63,13 +63,14 @@ class Storage:
             );
 
             CREATE TABLE IF NOT EXISTS validation_results (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                document_id INTEGER NOT NULL,
-                rule_id     INTEGER,
-                status      TEXT    NOT NULL,
-                detail      TEXT    NOT NULL DEFAULT '{}',
-                created_at  TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
-                FOREIGN KEY (document_id) REFERENCES documents(id)
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                preset_id    INTEGER,
+                rule_id      INTEGER,
+                document_ids TEXT    NOT NULL DEFAULT '[]',
+                status       TEXT    NOT NULL,
+                detail       TEXT    NOT NULL DEFAULT '{}',
+                created_at   TEXT    NOT NULL DEFAULT (datetime('now', 'localtime')),
+                FOREIGN KEY (preset_id) REFERENCES presets(id)
             );
         """)
         self.conn.commit()
@@ -363,37 +364,47 @@ class Storage:
     # ──────────────────────────────────────────────
     def save_validation_result(
         self,
-        document_id: int,
+        preset_id: Optional[int],
         rule_id: Optional[int],
+        document_ids: List[int],
         status: str,
         detail: Dict
     ) -> int:
         """
         검증 결과 저장 후 ID 반환.
         status 값: "통과", "실패", "경고"
+        document_ids: 검증 대상 문서 ID 목록 (JSON 배열로 저장)
         """
         cursor = self.conn.cursor()
         cursor.execute(
             """
-            INSERT INTO validation_results (document_id, rule_id, status, detail)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO validation_results (preset_id, rule_id, document_ids, status, detail)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (document_id, rule_id, status, self._dumps(detail))
+            (preset_id, rule_id, self._dumps(document_ids), status, self._dumps(detail))
         )
         self.conn.commit()
         return cursor.lastrowid
 
-    def get_validation_results(self, document_id: int) -> List[Dict]:
-        """document_id 기준 검증 결과 목록 반환"""
+    def get_validation_results(self, preset_id: Optional[int] = None) -> List[Dict]:
+        """
+        검증 결과 목록 반환.
+        preset_id 지정 시 해당 프리셋 결과만 필터링. None이면 전체 반환.
+        document_ids는 json.loads로 파싱하여 반환.
+        """
         cursor = self.conn.cursor()
-        cursor.execute(
-            "SELECT * FROM validation_results WHERE document_id = ? ORDER BY id",
-            (document_id,)
-        )
+        if preset_id is not None:
+            cursor.execute(
+                "SELECT * FROM validation_results WHERE preset_id = ? ORDER BY id",
+                (preset_id,)
+            )
+        else:
+            cursor.execute("SELECT * FROM validation_results ORDER BY id")
         rows = cursor.fetchall()
         result = []
         for row in rows:
             d = dict(row)
+            d["document_ids"] = self._loads(d["document_ids"])
             d["detail"] = self._loads(d["detail"])
             result.append(d)
         return result

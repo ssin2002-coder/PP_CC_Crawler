@@ -142,47 +142,70 @@ def test_preset_crud(storage):
 # ──────────────────────────────────────────────
 def test_validation_result(storage):
     """검증 결과 저장 및 조회"""
-    # 선행 문서 저장
-    doc_id = storage.save_document(
-        filename="settlement_2024.xlsx",
-        filepath="/data/settlement_2024.xlsx",
+    # 선행 문서 2개 저장
+    doc_id1 = storage.save_document(
+        filename="settlement_2024_01.xlsx",
+        filepath="/data/settlement_2024_01.xlsx",
         template_id=None,
         parsed_data={"rows": 10}
     )
-    assert doc_id is not None
+    doc_id2 = storage.save_document(
+        filename="settlement_2024_02.xlsx",
+        filepath="/data/settlement_2024_02.xlsx",
+        template_id=None,
+        parsed_data={"rows": 5}
+    )
+    assert doc_id1 is not None
+    assert doc_id2 is not None
 
-    # 검증 결과 저장 (한국어 status)
+    # 프리셋 저장 (preset_id 필터링 테스트용)
+    pid = storage.save_preset(
+        name="검증용 프리셋",
+        template_ids=[],
+        rule_ids=[],
+        settings={}
+    )
+
+    # 검증 결과 저장 (한국어 status, document_ids 리스트, preset_id 포함)
     vr_id = storage.save_validation_result(
-        document_id=doc_id,
+        preset_id=pid,
         rule_id=None,
+        document_ids=[doc_id1, doc_id2],
         status="통과",
         detail={"message": "합계 일치"}
     )
     assert vr_id is not None
 
-    # 조회
-    results = storage.get_validation_results(doc_id)
+    # preset_id 필터링 조회
+    results = storage.get_validation_results(preset_id=pid)
     assert len(results) == 1
     assert results[0]["status"] == "통과"
     assert results[0]["detail"]["message"] == "합계 일치"
+    assert set(results[0]["document_ids"]) == {doc_id1, doc_id2}
 
     # 실패/경고 status도 저장 가능한지 확인
     storage.save_validation_result(
-        document_id=doc_id,
+        preset_id=pid,
         rule_id=None,
+        document_ids=[doc_id1],
         status="실패",
         detail={"message": "금액 불일치"}
     )
     storage.save_validation_result(
-        document_id=doc_id,
+        preset_id=pid,
         rule_id=None,
+        document_ids=[doc_id2],
         status="경고",
         detail={"message": "빈 셀 감지"}
     )
-    all_results = storage.get_validation_results(doc_id)
+    all_results = storage.get_validation_results(preset_id=pid)
     assert len(all_results) == 3
     statuses = {r["status"] for r in all_results}
     assert statuses == {"통과", "실패", "경고"}
+
+    # preset_id=None → 전체 조회
+    all_global = storage.get_validation_results()
+    assert len(all_global) == 3
 
 
 # ──────────────────────────────────────────────

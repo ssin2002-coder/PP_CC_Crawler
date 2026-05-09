@@ -316,14 +316,10 @@ def _make_label(parent, text: str, style: str = "normal", **kw) -> "tk.Label":
         "yellow":  FONTS["normal"],
         "title":   FONTS["title"],
     }
-    return tk.Label(
-        parent,
-        text=text,
-        fg=fg_map.get(style, COLORS["text_main"]),
-        bg=kw.pop("bg", COLORS["bg_main"]),
-        font=kw.pop("font", font_map.get(style, FONTS["normal"])),
-        **kw,
-    )
+    fg = kw.pop("fg", fg_map.get(style, COLORS["text_main"]))
+    bg = kw.pop("bg", COLORS["bg_main"])
+    font = kw.pop("font", font_map.get(style, FONTS["normal"]))
+    return tk.Label(parent, text=text, fg=fg, bg=bg, font=font, **kw)
 
 
 # ──────────────────────────────────────────────

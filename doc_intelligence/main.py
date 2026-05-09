@@ -98,6 +98,12 @@ class DocIntelligenceApp:
 
     def _poll_loop(self, interval: int) -> None:
         """폴링 루프 — _polling이 True인 동안 반복 실행한다."""
+        # COM은 스레드별로 초기화 필요 (STA)
+        try:
+            import pythoncom
+            pythoncom.CoInitialize()
+        except Exception:
+            pass
         while self._polling:
             try:
                 docs = self.com_worker.detect_open_documents()
@@ -138,7 +144,10 @@ class DocIntelligenceApp:
             logger.warning("파서를 찾을 수 없음: %s", parser_key)
             return {}
 
-        com_app = self.com_worker.get_active_app(app)
+        com_app = doc_info.get("app_obj") or self.com_worker.get_active_app(app)
+        if com_app is None:
+            logger.warning("COM 앱 연결 실패: %s", app)
+            return {}
         parsed_doc = parser.parse_from_com(com_app)
         context = self.engine.process(parsed_doc)
         logger.info("문서 처리 완료 — %s / 엔티티 %d개",

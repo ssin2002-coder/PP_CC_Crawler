@@ -97,6 +97,7 @@ class ComWorker:
                         doc = collection.Item(i)
                         results.append({
                             "app": prog_id,
+                            "app_obj": app,
                             "name": getattr(doc, "Name", ""),
                             "path": getattr(doc, "FullName", ""),
                         })

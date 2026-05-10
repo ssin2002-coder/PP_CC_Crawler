@@ -1,6 +1,7 @@
 """REST API 엔드포인트"""
+import base64
 from dataclasses import asdict
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, Response, jsonify, request
 from doc_intelligence.engine import Engine
 from doc_intelligence.fingerprint import Fingerprinter
 
@@ -49,7 +50,8 @@ def create_api_blueprint(engine: Engine, fingerprinter: Fingerprinter, doc_cache
         b64 = entry.get("snapshot_b64")
         if b64 is None:
             return jsonify({"error": "no preview"}), 404
-        return jsonify({"image": b64})
+        img_bytes = base64.b64decode(b64)
+        return Response(img_bytes, mimetype="image/png")
 
     @api.route("/documents/<doc_id>/parsed", methods=["GET"])
     def get_parsed(doc_id):

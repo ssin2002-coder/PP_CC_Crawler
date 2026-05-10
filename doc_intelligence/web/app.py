@@ -64,10 +64,21 @@ def _build_doc_summary(doc_id: str, entry: dict, template_names: dict) -> dict:
 def _polling_loop(com_worker, engine, fingerprinter, socketio, interval=3):
     global _polling_running
     _polling_running = True
-    with com_worker.com_session():
+    print("[polling] thread started", flush=True)
+
+    import pythoncom
+    try:
+        pythoncom.CoInitialize()
+        print("[polling] CoInitialize OK", flush=True)
+    except Exception as e:
+        print(f"[polling] CoInitialize FAIL: {e}", flush=True)
+        return
+
+    try:
         while _polling_running:
             try:
                 docs = com_worker.detect_open_documents()
+                print(f"[polling] detected: {len(docs)}", flush=True)
                 current_ids = set()
                 for doc_info in docs:
                     file_path = doc_info.get("path", "")
@@ -100,16 +111,21 @@ def _polling_loop(com_worker, engine, fingerprinter, socketio, interval=3):
                         }
                         socketio.emit("parse_complete", {"doc_id": doc_id, "status": "ok"})
                         socketio.emit("documents_updated", _get_all_summaries(engine))
+                        print(f"[polling] processed: {doc_info.get('name')}", flush=True)
                     except Exception as e:
-                        logger.warning("문서 처리 실패 (%s): %s", file_path, e)
+                        print(f"[polling] parse fail ({file_path}): {e}", flush=True)
+                        import traceback
+                        traceback.print_exc()
                 closed = set(_doc_cache.keys()) - current_ids
                 if closed:
                     for cid in closed:
                         del _doc_cache[cid]
                     socketio.emit("documents_updated", _get_all_summaries(engine))
             except Exception as e:
-                logger.warning("폴링 루프 에러: %s", e)
+                print(f"[polling] loop error: {e}", flush=True)
             time.sleep(interval)
+    finally:
+        pythoncom.CoUninitialize()
 
 
 def _get_all_summaries(engine):

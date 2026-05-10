@@ -67,7 +67,10 @@ class ComWorker:
         try:
             return win32com.client.GetActiveObject(prog_id)
         except Exception:
-            return None
+            try:
+                return win32com.client.Dispatch(prog_id)
+            except Exception:
+                return None
 
     def detect_open_documents(self) -> list:
         """Excel, Word, PPT에서 열린 문서 목록 감지.

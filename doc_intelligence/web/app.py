@@ -1,6 +1,7 @@
 """Flask + SocketIO 서버 + COM 폴링 스레드"""
 import hashlib
 import logging
+import os
 import threading
 import time
 from dataclasses import asdict
@@ -138,4 +139,19 @@ def create_app(testing=False, db_path="doc_intelligence.db"):
             daemon=True,
         )
         polling_thread.start()
+    static_dir = os.path.join(os.path.dirname(__file__), "static")
+    if os.path.exists(static_dir):
+        from flask import send_from_directory
+
+        @app.route("/")
+        def index():
+            return send_from_directory(static_dir, "index.html")
+
+        @app.route("/<path:path>")
+        def static_files(path):
+            file_path = os.path.join(static_dir, path)
+            if os.path.exists(file_path):
+                return send_from_directory(static_dir, path)
+            return send_from_directory(static_dir, "index.html")
+
     return app, socketio

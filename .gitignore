@@ -11,6 +11,7 @@ dist/
 # Frontend
 frontend/node_modules/
 frontend/dist/
+doc_intelligence/web/frontend/node_modules/
 
 # Playwright MCP
 .playwright-mcp/

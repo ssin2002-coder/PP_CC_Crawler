@@ -215,6 +215,16 @@ function OcrGridView({ cells }) {
   const hasGrid = cells.some(c => c.address.startsWith('ocr_tbl:'));
   if (!hasGrid) return <TextListView cells={cells} label="OCR 결과" />;
 
+  const ocrBanner = (
+    <div style={{
+      fontSize: '11px', color: 'var(--color-orange)', padding: '6px 10px',
+      background: 'rgba(255,159,10,0.1)', borderRadius: '6px', marginBottom: '8px',
+      border: '1px solid rgba(255,159,10,0.2)',
+    }}>
+      ⚠ OCR 결과 — 일부 값이 누락될 수 있습니다. 정확한 데이터가 필요하면 원본 PDF를 업로드하세요.
+    </div>
+  );
+
   const grid = {};
   let maxR = 0, maxC = 0;
   cells.forEach(cell => {
@@ -230,6 +240,7 @@ function OcrGridView({ cells }) {
 
   return (
     <div>
+      {ocrBanner}
       <div style={{ fontSize: '11px', color: 'var(--text-sub)', marginBottom: '6px', fontWeight: 500 }}>
         OCR 결과 ({maxR + 1}행 × {maxC + 1}열)
       </div>
@@ -275,7 +286,7 @@ export default function DataTable() {
 
   if (hasFallback) {
     const reasons = {
-      'tesseract_not_installed': 'pytesseract 미설치 — Windows OCR도 실패',
+      'tesseract_not_installed': 'Windows OCR fallback 실패',
       'windows_ocr_no_result': 'Windows OCR 결과 없음 — 이미지 품질 확인 필요',
       'file_open_error': '파일을 열 수 없습니다',
       'ocr_error': 'OCR 처리 실패',

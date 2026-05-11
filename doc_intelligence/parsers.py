@@ -598,10 +598,9 @@ class ImageParser(BaseParser):
 
     @staticmethod
     def _build_ocr_grid(lines: list) -> tuple:
-        """OCR 라인을 y좌표 행 + x좌표 근접 합치기 + 큰 gap 열 분리로 구조화.
+        """OCR 라인을 y행 클러스터 + 헤더 기반 열 경계 매핑으로 구조화.
 
         반환: (grid_rows: list[list[str]], max_cols: int)
-        각 row는 열 분리된 텍스트 리스트.
         """
         all_words = []
         for line_data in lines:
@@ -627,30 +626,55 @@ class ImageParser(BaseParser):
             curr.sort(key=lambda w: w.get("x", 0))
             raw_rows.append(curr)
 
-        # 2단계: 각 행에서 근접 워드 합치기 (gap <= 15px → 하나의 토큰)
-        # 그리고 큰 gap (> 40px)으로 열 분리
-        grid_rows = []
-        for row_words in raw_rows:
-            # 근접 합치기
-            merged = []
-            buf = row_words[0].get("text", "")
-            prev_end = row_words[0].get("x", 0) + row_words[0].get("w", 0)
-            for w in row_words[1:]:
-                wx = w.get("x", 0)
-                gap = wx - prev_end
-                if gap > 40:
-                    merged.append(buf)
-                    buf = w.get("text", "")
-                elif gap > 3:
-                    buf += " " + w.get("text", "")
-                else:
-                    buf += w.get("text", "")
-                prev_end = wx + w.get("w", 0)
-            merged.append(buf)
-            grid_rows.append(merged)
+        # 2단계: 가장 많은 x-gap을 가진 행(=헤더 행)에서 열 경계 추출
+        best_row = None
+        best_gaps = 0
+        for row in raw_rows:
+            if len(row) < 3:
+                continue
+            gaps = 0
+            for i in range(1, len(row)):
+                if row[i].get("x", 0) - (row[i-1].get("x", 0) + row[i-1].get("w", 0)) > 60:
+                    gaps += 1
+            if gaps >= best_gaps:
+                best_gaps = gaps
+                best_row = row
 
-        max_cols = max(len(r) for r in grid_rows) if grid_rows else 0
-        return grid_rows, max_cols
+        if best_row is None or best_gaps < 2:
+            # fallback: 단순 행별 텍스트 합치기
+            grid_rows = []
+            for row in raw_rows:
+                text = " ".join(w.get("text", "") for w in row)
+                grid_rows.append([text])
+            return grid_rows, 1
+
+        # 헤더 행에서 열 시작 x좌표 추출 (gap > 60px 기준)
+        col_starts = [best_row[0].get("x", 0)]
+        for i in range(1, len(best_row)):
+            gap = best_row[i].get("x", 0) - (best_row[i-1].get("x", 0) + best_row[i-1].get("w", 0))
+            if gap > 60:
+                col_starts.append(best_row[i].get("x", 0))
+        num_cols = len(col_starts)
+
+        def find_col(x):
+            for i in range(num_cols - 1, -1, -1):
+                if x >= col_starts[i] - 30:
+                    return i
+            return 0
+
+        # 3단계: 모든 행을 열 경계에 매핑
+        grid_rows = []
+        for row in raw_rows:
+            cells = [""] * num_cols
+            for w in row:
+                ci = find_col(w.get("x", 0))
+                if cells[ci]:
+                    cells[ci] += " " + w.get("text", "")
+                else:
+                    cells[ci] = w.get("text", "")
+            grid_rows.append(cells)
+
+        return grid_rows, num_cols
 
     def _windows_ocr_parse(self, file_path: str) -> ParsedDocument:
         """Windows 내장 OCR로 이미지를 파싱한다."""

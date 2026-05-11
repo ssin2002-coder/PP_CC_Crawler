@@ -55,7 +55,7 @@ export default function FileList() {
           </div>
           <div style={{ display: 'flex', gap: '4px' }}>
             <input value={uploadPath} onChange={(e) => setUploadPath(e.target.value)}
-              placeholder="C:\path\to\file.pdf"
+              placeholder={uploadType === 'pdf' ? 'C:\\path\\to\\file.pdf' : 'C:\\path\\to\\image.png'}
               onKeyDown={(e) => e.key === 'Enter' && handleUpload()}
               autoFocus
               style={{

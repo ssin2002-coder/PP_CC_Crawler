@@ -230,7 +230,8 @@ export default function DataTable() {
 
   if (hasFallback) {
     const reasons = {
-      'tesseract_not_installed': 'pytesseract 미설치 — Tesseract OCR 설치 필요',
+      'tesseract_not_installed': 'pytesseract 미설치 — Windows OCR도 실패',
+      'windows_ocr_no_result': 'Windows OCR 결과 없음 — 이미지 품질 확인 필요',
       'file_open_error': '파일을 열 수 없습니다',
       'ocr_error': 'OCR 처리 실패',
       'pypdf_not_installed': 'pypdf 미설치 — pip install pypdf 필요',

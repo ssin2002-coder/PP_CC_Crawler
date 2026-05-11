@@ -555,3 +555,31 @@ FAIL
 - 이미지 업로드 모드 placeholder는 이미지 파일 예시로 바꿔야 함.
 
 코덱스 검수완료
+
+---
+
+## 클로드 6차 재수정 (6차 검수 피드백 반영)
+
+### 수정 항목
+
+1. **OCR — PowerShell → Python winrt 전환**
+   - PowerShell WinRT async 불안정 → Python `winrt` 패키지로 전면 교체
+   - `winrt-Windows.Media.Ocr` 등 설치, `_windows_ocr()` 함수를 asyncio 기반으로 재작성
+   - 테스트 결과: `codex_ocr_sample.png`에서 72줄 성공 추출
+
+2. **상세 미리보기 겹침 해결**
+   - App.jsx DetailPreview: `flexShrink: 0`, `maxHeight: 280px`, `overflow: auto`로 고정
+   - 파싱 결과와 겹치지 않도록 flex 레이아웃 분리
+
+3. **업로드 placeholder 수정**
+   - 이미지 모드: `C:\path\to\image.png`, PDF 모드: `C:\path\to\file.pdf`
+
+4. **requirements 업데이트**
+   - winrt OCR 관련 패키지 4개 추가
+
+### 검증
+- 프론트엔드 빌드 성공
+- 백엔드 테스트 139/141 통과
+- Windows OCR 72줄 추출 성공 확인
+
+### 클로드 작업완료

@@ -460,58 +460,53 @@ class PdfParser(BaseParser):
 # ImageParser
 # ──────────────────────────────────────────────
 
+try:
+    import asyncio as _asyncio
+    from winrt.windows.media.ocr import OcrEngine as _OcrEngine
+    from winrt.windows.graphics.imaging import BitmapDecoder as _BitmapDecoder
+    from winrt.windows.storage import StorageFile as _StorageFile
+    from winrt.windows.globalization import Language as _Language
+    _WINRT_OCR_AVAILABLE = True
+except ImportError:
+    _WINRT_OCR_AVAILABLE = False
+
+
 def _windows_ocr(file_path: str) -> list:
-    """Windows 10/11 내장 OCR (PowerShell UWP API). Tesseract 불필요.
+    """Windows 10/11 내장 OCR (Python winrt). Tesseract 불필요.
 
-    반환: [{"text": str, "x": int, "y": int, "w": int, "h": int}, ...]
+    반환: [{"text": str, "words": [{"text", "x", "y", "w", "h"}]}, ...]
     """
-    import subprocess, json, os
-    abs_path = os.path.abspath(file_path).replace("\\", "\\\\")
-    ps_script = f'''
-Add-Type -AssemblyName System.Runtime.WindowsRuntime
-$null = [Windows.Storage.StorageFile,Windows.Storage,ContentType=WindowsRuntime]
-$null = [Windows.Graphics.Imaging.BitmapDecoder,Windows.Graphics,ContentType=WindowsRuntime]
-$null = [Windows.Media.Ocr.OcrEngine,Windows.Media.Ocr,ContentType=WindowsRuntime]
+    if not _WINRT_OCR_AVAILABLE:
+        logger.warning("winrt OCR 패키지 미설치")
+        return []
 
-function Await($WinRtTask) {{
-    $asTask = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {{
-        $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and
-        $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
-    }} | Select-Object -First 1
-    $netTask = $asTask.MakeGenericMethod($WinRtTask.GetType().GetGenericArguments()[0]).Invoke($null, @($WinRtTask))
-    $netTask.Wait()
-    return $netTask.Result
-}}
+    import os
+    abs_path = os.path.abspath(file_path)
 
-$file = Await([Windows.Storage.StorageFile]::GetFileFromPathAsync("{abs_path}"))
-$stream = Await($file.OpenAsync([Windows.Storage.FileAccessMode]::Read))
-$decoder = Await([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream))
-$bitmap = Await($decoder.GetSoftwareBitmapAsync())
-$engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage([Windows.Globalization.Language]::new("ko"))
-if ($engine -eq $null) {{ $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages() }}
-$result = Await($engine.RecognizeAsync($bitmap))
-$lines = @()
-foreach ($line in $result.Lines) {{
-    $words = @()
-    foreach ($word in $line.Words) {{
-        $r = $word.BoundingRect
-        $words += @{{ text=$word.Text; x=[int]$r.X; y=[int]$r.Y; w=[int]$r.Width; h=[int]$r.Height }}
-    }}
-    $lines += @{{ text=$line.Text; words=$words }}
-}}
-$lines | ConvertTo-Json -Depth 3
-'''
+    async def _run():
+        file = await _StorageFile.get_file_from_path_async(abs_path)
+        stream = await file.open_read_async()
+        decoder = await _BitmapDecoder.create_async(stream)
+        bitmap = await decoder.get_software_bitmap_async()
+        engine = _OcrEngine.try_create_from_language(_Language("ko"))
+        if engine is None:
+            engine = _OcrEngine.try_create_from_user_profile_languages()
+        result = await engine.recognize_async(bitmap)
+        lines = []
+        for line in result.lines:
+            words = []
+            for word in line.words:
+                r = word.bounding_rect
+                words.append({
+                    "text": word.text,
+                    "x": int(r.x), "y": int(r.y),
+                    "w": int(r.width), "h": int(r.height),
+                })
+            lines.append({"text": line.text, "words": words})
+        return lines
+
     try:
-        result = subprocess.run(
-            ['powershell', '-NoProfile', '-Command', ps_script],
-            capture_output=True, text=True, timeout=30, encoding='utf-8',
-        )
-        if result.returncode != 0:
-            return []
-        data = json.loads(result.stdout)
-        if isinstance(data, dict):
-            data = [data]
-        return data
+        return _asyncio.run(_run())
     except Exception as exc:
         logger.warning("Windows OCR 실패: %s", exc)
         return []

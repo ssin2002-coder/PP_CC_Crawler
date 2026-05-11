@@ -10,13 +10,14 @@ function DetailPreview({ docId, documents }) {
   return (
     <div style={{
       borderBottom: '1px solid var(--border)', padding: '8px',
-      background: 'var(--bg-panel)', maxHeight: '40%', overflow: 'auto',
+      background: 'var(--bg-panel)', flexShrink: 0,
+      maxHeight: '280px', overflow: 'auto',
     }}>
       <div style={{ fontSize: '11px', color: 'var(--text-sub)', marginBottom: '4px', fontWeight: 500 }}>
         원본 미리보기
       </div>
       <img src={`/api/documents/${docId}/preview`} alt="원본 미리보기"
-        style={{ width: '100%', borderRadius: '6px', border: '1px solid var(--border)' }}
+        style={{ width: '100%', borderRadius: '6px', border: '1px solid var(--border)', display: 'block' }}
         onError={(e) => { e.target.style.display = 'none'; }} />
     </div>
   );

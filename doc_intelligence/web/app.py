@@ -6,11 +6,13 @@ import threading
 import time
 from dataclasses import asdict
 
+import yaml
+
 from flask import Flask
 from flask_socketio import SocketIO
 
 from doc_intelligence.com_worker import ComWorker
-from doc_intelligence.parsers import ExcelParser, WordParser, PowerPointParser, PdfParser
+from doc_intelligence.parsers import ExcelParser, WordParser, PowerPointParser, PdfParser, ImageParser
 from doc_intelligence.fingerprint import Fingerprinter
 from doc_intelligence.engine import Engine
 from doc_intelligence.web.snapshot import capture_window_snapshot
@@ -22,6 +24,7 @@ _APP_TO_PARSER = {
     "Word.Application": WordParser,
     "PowerPoint.Application": PowerPointParser,
     "AcroExch.App": PdfParser,
+    "Image": ImageParser,
 }
 
 _doc_cache: dict[str, dict] = {}
@@ -61,6 +64,17 @@ def _build_doc_summary(doc_id: str, entry: dict, template_names: dict) -> dict:
     }
 
 
+def _load_watch_dirs() -> list:
+    """config.yaml에서 image.watch_dirs를 로드한다."""
+    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.yaml")
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+        return cfg.get("image", {}).get("watch_dirs", [])
+    except Exception:
+        return []
+
+
 def _polling_loop(com_worker, engine, fingerprinter, socketio, interval=3):
     global _polling_running
     _polling_running = True
@@ -77,7 +91,14 @@ def _polling_loop(com_worker, engine, fingerprinter, socketio, interval=3):
     try:
         while _polling_running:
             try:
+                # COM 문서 감지 (Excel, Word, PPT, Acrobat)
                 docs = com_worker.detect_open_documents()
+
+                # 이미지 파일 감지
+                watch_dirs = _load_watch_dirs()
+                if watch_dirs:
+                    docs.extend(com_worker.detect_image_files(watch_dirs))
+
                 print(f"[polling] detected: {len(docs)}", flush=True)
                 current_ids = set()
                 for doc_info in docs:
@@ -97,12 +118,22 @@ def _polling_loop(com_worker, engine, fingerprinter, socketio, interval=3):
                     try:
                         parser = parser_cls()
                         com_app = doc_info.get("app_obj")
-                        parsed = parser.parse_from_com(com_app)
+                        doc_obj = doc_info.get("doc_obj")
+
+                        # 개별 문서 객체 전달 (다중 파일 지원)
+                        if app_type == "AcroExch.App":
+                            pd_doc = doc_info.get("pd_doc")
+                            parsed = parser.parse_from_com(com_app, pd_doc=pd_doc)
+                        elif doc_obj is not None:
+                            parsed = parser.parse_from_com(com_app, doc_obj=doc_obj)
+                        else:
+                            parsed = parser.parse_from_com(com_app)
+
                         fp_result = fingerprinter.generate(parsed)
                         match_result = fingerprinter.match(parsed)
                         snapshot = capture_window_snapshot(doc_info.get("name", ""))
                         _doc_cache[doc_id] = {
-                            "info": {k: v for k, v in doc_info.items() if k != "app_obj"},
+                            "info": {k: v for k, v in doc_info.items() if k not in ("app_obj", "pd_doc", "doc_obj")},
                             "parsed": parsed,
                             "fingerprint": fp_result,
                             "match": match_result,
@@ -116,7 +147,11 @@ def _polling_loop(com_worker, engine, fingerprinter, socketio, interval=3):
                         print(f"[polling] parse fail ({file_path}): {e}", flush=True)
                         import traceback
                         traceback.print_exc()
-                closed = set(_doc_cache.keys()) - current_ids
+                # API 업로드 항목은 폴링 삭제에서 제외
+                closed = set()
+                for cid in _doc_cache:
+                    if cid not in current_ids and _doc_cache[cid].get("source") != "api":
+                        closed.add(cid)
                 if closed:
                     for cid in closed:
                         del _doc_cache[cid]

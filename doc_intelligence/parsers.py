@@ -35,10 +35,10 @@ class BaseParser:
 # ──────────────────────────────────────────────
 
 class ExcelParser(BaseParser):
-    """Excel.Application COM에서 ActiveWorkbook을 파싱한다."""
+    """Excel.Application COM에서 Workbook을 파싱한다."""
 
-    def parse_from_com(self, com_app) -> ParsedDocument:
-        wb = com_app.ActiveWorkbook
+    def parse_from_com(self, com_app, doc_obj=None) -> ParsedDocument:
+        wb = doc_obj if doc_obj is not None else com_app.ActiveWorkbook
         file_path = str(wb.FullName)
 
         all_cells: list[CellData] = []
@@ -55,6 +55,25 @@ class ExcelParser(BaseParser):
 
             row_end = row_start + row_count - 1
             col_end = col_start + col_count - 1
+
+            # 열 너비 / 행 높이 (시트당 1회)
+            col_widths = {}
+            for c in range(col_start, col_end + 1):
+                try:
+                    col_widths[c] = round(float(ws.Columns(c).ColumnWidth), 1)
+                except Exception:
+                    col_widths[c] = 8.0
+
+            row_heights = {}
+            for r in range(row_start, row_end + 1):
+                try:
+                    row_heights[r] = round(float(ws.Rows(r).RowHeight), 1)
+                except Exception:
+                    row_heights[r] = 15.0
+
+            # 병합 영역 수집
+            merge_ranges = []
+            seen_merges = set()
 
             for r in range(row_start, row_end + 1):
                 for c in range(col_start, col_end + 1):
@@ -76,14 +95,61 @@ class ExcelParser(BaseParser):
 
                     address = f"{sheet_name}!R{r}C{c}"
 
+                    # 병합 정보
+                    merge_rowspan = 1
+                    merge_colspan = 1
+                    merge_hidden = False
                     if is_merged:
                         merge_cells.append(address)
+                        try:
+                            ma = cell.MergeArea
+                            ma_r, ma_c = ma.Row, ma.Column
+                            ma_rs, ma_cs = ma.Rows.Count, ma.Columns.Count
+                            if r == ma_r and c == ma_c:
+                                merge_rowspan = ma_rs
+                                merge_colspan = ma_cs
+                                merge_key = f"{sheet_name}!R{ma_r}C{ma_c}"
+                                if merge_key not in seen_merges:
+                                    seen_merges.add(merge_key)
+                                    merge_ranges.append({
+                                        "row": ma_r, "col": ma_c,
+                                        "rowspan": ma_rs, "colspan": ma_cs,
+                                    })
+                            else:
+                                merge_hidden = True
+                        except Exception:
+                            pass
+
+                    # 배경색
+                    bg_color = None
+                    try:
+                        color_long = cell.Interior.Color
+                        if color_long is not None:
+                            cl = int(color_long)
+                            # 16777215 = 흰색(#ffffff), 0 이하 = 자동
+                            if 0 < cl < 16777215:
+                                bg_color = f"#{cl & 0xFF:02x}{(cl >> 8) & 0xFF:02x}{(cl >> 16) & 0xFF:02x}"
+                    except Exception:
+                        pass
+
+                    # 정렬
+                    align = "general"
+                    try:
+                        ha = int(cell.HorizontalAlignment)
+                        align = {-4131: "left", -4108: "center", -4152: "right"}.get(ha, "general")
+                    except Exception:
+                        pass
 
                     neighbors = {
                         "merged": is_merged,
+                        "merge_hidden": merge_hidden,
+                        "merge_rowspan": merge_rowspan,
+                        "merge_colspan": merge_colspan,
                         "number_format": fmt,
                         "row": r,
                         "col": c,
+                        "bg_color": bg_color,
+                        "align": align,
                     }
 
                     cell_data = CellData(
@@ -101,6 +167,9 @@ class ExcelParser(BaseParser):
                 "name": sheet_name,
                 "rows": row_count,
                 "cols": col_count,
+                "col_widths": col_widths,
+                "row_heights": row_heights,
+                "merge_ranges": merge_ranges,
             })
 
         # merge_hash: 병합 셀 패턴의 MD5
@@ -135,19 +204,34 @@ def _looks_like_date(value: str) -> bool:
 # ──────────────────────────────────────────────
 
 class WordParser(BaseParser):
-    """Word.Application COM에서 ActiveDocument를 파싱한다."""
+    """Word.Application COM에서 Document를 파싱한다."""
 
-    def parse_from_com(self, com_app) -> ParsedDocument:
-        doc = com_app.ActiveDocument
+    def parse_from_com(self, com_app, doc_obj=None) -> ParsedDocument:
+        doc = doc_obj if doc_obj is not None else com_app.ActiveDocument
         file_path = str(doc.FullName)
 
         all_cells: list[CellData] = []
         raw_parts: list[str] = []
 
-        # Paragraphs 순회
+        # 표 범위 수집 (문단 중복 제거용)
+        table_ranges = []
+        for table in doc.Tables:
+            try:
+                table_ranges.append((table.Range.Start, table.Range.End))
+            except Exception:
+                pass
+
+        # Paragraphs 순회 — 표 내부 문단은 제외
         for i, para in enumerate(doc.Paragraphs):
-            text = str(para.Range.Text).rstrip("\r\n")
-            if text.strip():
+            try:
+                p_start = para.Range.Start
+                in_table = any(ts <= p_start <= te for ts, te in table_ranges)
+                if in_table:
+                    continue
+            except Exception:
+                pass
+            text = str(para.Range.Text).replace("\x07", "").replace("\r", "").strip()
+            if text:
                 raw_parts.append(text)
                 all_cells.append(CellData(
                     address=f"para:{i}",
@@ -162,8 +246,8 @@ class WordParser(BaseParser):
             table_count += 1
             for r_idx, row in enumerate(table.Rows):
                 for c_idx, cell in enumerate(row.Cells):
-                    text = str(cell.Range.Text).rstrip("\r\n\x07")
-                    if text.strip():
+                    text = str(cell.Range.Text).replace("\x07", "").replace("\r", "").strip()
+                    if text:
                         raw_parts.append(text)
                     address = f"table{t_idx}:R{r_idx}C{c_idx}"
                     all_cells.append(CellData(
@@ -193,10 +277,10 @@ class WordParser(BaseParser):
 # ──────────────────────────────────────────────
 
 class PowerPointParser(BaseParser):
-    """PowerPoint.Application COM에서 ActivePresentation을 파싱한다."""
+    """PowerPoint.Application COM에서 Presentation을 파싱한다."""
 
-    def parse_from_com(self, com_app) -> ParsedDocument:
-        prs = com_app.ActivePresentation
+    def parse_from_com(self, com_app, doc_obj=None) -> ParsedDocument:
+        prs = doc_obj if doc_obj is not None else com_app.ActivePresentation
         file_path = str(prs.FullName)
 
         all_cells: list[CellData] = []
@@ -262,15 +346,20 @@ class PdfParser(BaseParser):
     Acrobat Pro 미설치(또는 COM 예외) 시 _fallback_ocr를 호출한다.
     """
 
-    def parse_from_com(self, com_app) -> ParsedDocument:
+    def parse_from_com(self, com_app, pd_doc=None) -> ParsedDocument:
         try:
-            return self._parse_acrobat(com_app)
+            return self._parse_acrobat(com_app, pd_doc=pd_doc)
         except Exception as exc:
             logger.warning("Acrobat COM 파싱 실패, fallback 전환: %s", exc)
             return self._fallback_ocr(com_app)
 
-    def _parse_acrobat(self, com_app) -> ParsedDocument:
-        doc = com_app.GetActiveDoc()
+    def _parse_acrobat(self, com_app, pd_doc=None) -> ParsedDocument:
+        if pd_doc is not None:
+            doc = pd_doc
+        else:
+            av_doc = com_app.GetActiveDoc()
+            doc = av_doc.GetPDDoc()
+
         js = doc.GetJSObject()
         page_count = doc.GetNumPages()
 
@@ -278,9 +367,7 @@ class PdfParser(BaseParser):
         raw_parts: list[str] = []
 
         for page_idx in range(page_count):
-            page = doc.GetNthPage(page_idx)
-            word_count = page.GetNumWords()
-            for word_idx in range(word_count):
+            for word_idx in range(js.getPageNumWords(page_idx)):
                 word = js.getPageNthWord(page_idx, word_idx)
                 if word and str(word).strip():
                     text = str(word).strip()
@@ -319,24 +406,130 @@ class PdfParser(BaseParser):
             metadata={"fallback": True},
         )
 
+    @staticmethod
+    def parse_from_file(file_path: str) -> ParsedDocument:
+        """pypdf로 PDF 파일을 직접 파싱한다 (Acrobat COM 불필요)."""
+        try:
+            from pypdf import PdfReader
+        except ImportError:
+            logger.warning("pypdf 미설치 — PDF 파일 파싱 불가")
+            return ParsedDocument(
+                file_path=file_path, file_type="pdf", raw_text="",
+                structure={}, cells=[],
+                metadata={"fallback": True, "reason": "pypdf_not_installed"},
+            )
+
+        try:
+            reader = PdfReader(file_path)
+        except Exception as exc:
+            logger.warning("PDF 파일 열기 실패 (%s): %s", file_path, exc)
+            return ParsedDocument(
+                file_path=file_path, file_type="pdf", raw_text="",
+                structure={}, cells=[],
+                metadata={"fallback": True, "reason": "file_open_error"},
+            )
+
+        all_cells: list[CellData] = []
+        raw_parts: list[str] = []
+
+        for page_idx, page in enumerate(reader.pages):
+            text = page.extract_text() or ""
+            for line_idx, line in enumerate(text.split("\n")):
+                line = line.strip()
+                if line:
+                    raw_parts.append(line)
+                    address = f"pdf:p{page_idx}L{line_idx}"
+                    all_cells.append(CellData(
+                        address=address,
+                        value=line,
+                        data_type="text",
+                        neighbors={"page": page_idx, "line": line_idx},
+                    ))
+
+        return ParsedDocument(
+            file_path=file_path,
+            file_type="pdf",
+            raw_text="\n".join(raw_parts),
+            structure={"page_count": len(reader.pages)},
+            cells=all_cells,
+            metadata={},
+        )
+
 
 # ──────────────────────────────────────────────
 # ImageParser
 # ──────────────────────────────────────────────
 
+def _windows_ocr(file_path: str) -> list:
+    """Windows 10/11 내장 OCR (PowerShell UWP API). Tesseract 불필요.
+
+    반환: [{"text": str, "x": int, "y": int, "w": int, "h": int}, ...]
+    """
+    import subprocess, json, os
+    abs_path = os.path.abspath(file_path).replace("\\", "\\\\")
+    ps_script = f'''
+Add-Type -AssemblyName System.Runtime.WindowsRuntime
+$null = [Windows.Storage.StorageFile,Windows.Storage,ContentType=WindowsRuntime]
+$null = [Windows.Graphics.Imaging.BitmapDecoder,Windows.Graphics,ContentType=WindowsRuntime]
+$null = [Windows.Media.Ocr.OcrEngine,Windows.Media.Ocr,ContentType=WindowsRuntime]
+
+function Await($WinRtTask) {{
+    $asTask = [System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object {{
+        $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and
+        $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation`1'
+    }} | Select-Object -First 1
+    $netTask = $asTask.MakeGenericMethod($WinRtTask.GetType().GetGenericArguments()[0]).Invoke($null, @($WinRtTask))
+    $netTask.Wait()
+    return $netTask.Result
+}}
+
+$file = Await([Windows.Storage.StorageFile]::GetFileFromPathAsync("{abs_path}"))
+$stream = Await($file.OpenAsync([Windows.Storage.FileAccessMode]::Read))
+$decoder = Await([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream))
+$bitmap = Await($decoder.GetSoftwareBitmapAsync())
+$engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromLanguage([Windows.Globalization.Language]::new("ko"))
+if ($engine -eq $null) {{ $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages() }}
+$result = Await($engine.RecognizeAsync($bitmap))
+$lines = @()
+foreach ($line in $result.Lines) {{
+    $words = @()
+    foreach ($word in $line.Words) {{
+        $r = $word.BoundingRect
+        $words += @{{ text=$word.Text; x=[int]$r.X; y=[int]$r.Y; w=[int]$r.Width; h=[int]$r.Height }}
+    }}
+    $lines += @{{ text=$line.Text; words=$words }}
+}}
+$lines | ConvertTo-Json -Depth 3
+'''
+    try:
+        result = subprocess.run(
+            ['powershell', '-NoProfile', '-Command', ps_script],
+            capture_output=True, text=True, timeout=30, encoding='utf-8',
+        )
+        if result.returncode != 0:
+            return []
+        data = json.loads(result.stdout)
+        if isinstance(data, dict):
+            data = [data]
+        return data
+    except Exception as exc:
+        logger.warning("Windows OCR 실패: %s", exc)
+        return []
+
+
 class ImageParser(BaseParser):
-    """pytesseract OCR로 이미지 파일을 파싱한다.
+    """이미지 파일 OCR 파서.
 
     com_app 인자로 이미지 파일 경로(str)를 받는다.
-    pytesseract 미설치 또는 파일 접근 실패 시 graceful fail.
+    우선순위: pytesseract → Windows 내장 OCR → graceful fail.
     """
 
     def parse_from_com(self, com_app) -> ParsedDocument:
         file_path = str(com_app) if com_app else ""
 
         if not _TESSERACT_AVAILABLE:
-            logger.warning("pytesseract 미설치 — ImageParser graceful fail")
-            return _empty_image_doc(file_path, reason="tesseract_not_installed")
+            logger.info("pytesseract 미설치 — Windows 내장 OCR 시도")
+            return self._windows_ocr_parse(file_path)
 
         try:
             img = PILImage.open(file_path)
@@ -388,6 +581,44 @@ class ImageParser(BaseParser):
             structure={"ocr_blocks": len(all_cells)},
             cells=all_cells,
             metadata={"lang": "kor"},
+        )
+
+    def _windows_ocr_parse(self, file_path: str) -> ParsedDocument:
+        """Windows 내장 OCR로 이미지를 파싱한다."""
+        import os
+        if not os.path.isfile(file_path):
+            return _empty_image_doc(file_path, reason="file_open_error")
+
+        lines = _windows_ocr(file_path)
+        if not lines:
+            return _empty_image_doc(file_path, reason="windows_ocr_no_result")
+
+        all_cells: list[CellData] = []
+        raw_parts: list[str] = []
+
+        for line_data in lines:
+            text = line_data.get("text", "").strip()
+            if not text:
+                continue
+            words = line_data.get("words", [])
+            x = words[0].get("x", 0) if words else 0
+            y = words[0].get("y", 0) if words else 0
+            address = f"ocr:{x},{y}"
+            raw_parts.append(text)
+            all_cells.append(CellData(
+                address=address,
+                value=text,
+                data_type="text",
+                neighbors={"x": x, "y": y, "ocr_engine": "windows"},
+            ))
+
+        return ParsedDocument(
+            file_path=file_path,
+            file_type="image",
+            raw_text=" ".join(raw_parts),
+            structure={"ocr_blocks": len(all_cells)},
+            cells=all_cells,
+            metadata={"lang": "ko", "ocr_engine": "windows"},
         )
 
 

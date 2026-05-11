@@ -1,6 +1,7 @@
 import DocPreview from './DocPreview';
 const iconMap = {
   'Excel.Application': '📊', 'Word.Application': '📝', 'PowerPoint.Application': '📑',
+  'AcroExch.App': '📕', 'Image': '🖼️',
 };
 const statusConfig = {
   matched: { label: '매칭됨', bg: 'var(--color-green)', color: '#000' },
@@ -24,7 +25,7 @@ export default function FileCard({ doc, selected, onClick }) {
           {doc.name}
         </span>
       </div>
-      <DocPreview docId={doc.id} hasPreview={doc.has_preview} />
+      <DocPreview docId={doc.id} hasPreview={doc.has_preview} app={doc.app} />
       <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '6px' }}>
         <span style={{ fontSize: '10px', background: badge.bg, color: badge.color,
           padding: '1px 8px', borderRadius: 'var(--radius-pill)', fontWeight: 500 }}>

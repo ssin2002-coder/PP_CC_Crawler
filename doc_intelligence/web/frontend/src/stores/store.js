@@ -4,9 +4,11 @@ export const useStore = create((set, get) => ({
   selectedDocId: null,
   parsedData: {},
   comStatus: 'connecting',
+  envStatus: null,
   setDocuments: (docs) => set({ documents: docs }),
   selectDocument: (docId) => set({ selectedDocId: docId }),
   setComStatus: (status) => set({ comStatus: status }),
+  setEnvStatus: (status) => set({ envStatus: status }),
   setParsedData: (docId, data) => set((state) => ({
     parsedData: { ...state.parsedData, [docId]: data },
   })),

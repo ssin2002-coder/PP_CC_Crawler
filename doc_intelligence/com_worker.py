@@ -4,6 +4,7 @@ COM 프로세스 격리 래퍼 — STA 세션, 재시도 3회, 타임아웃.
 
 COM 미설치(pythoncom/win32com 없음) 환경에서도 import 에러 없이 동작.
 """
+import os
 import time
 from contextlib import contextmanager
 
@@ -101,6 +102,7 @@ class ComWorker:
                         results.append({
                             "app": prog_id,
                             "app_obj": app,
+                            "doc_obj": doc,
                             "name": getattr(doc, "Name", ""),
                             "path": getattr(doc, "FullName", ""),
                         })
@@ -109,6 +111,62 @@ class ComWorker:
             except Exception:
                 continue
 
+        # Acrobat PDF 감지 — Dispatch 사용 안 함 (새 인스턴스 생성 방지)
+        try:
+            acrobat = None
+            if _COM_AVAILABLE:
+                try:
+                    acrobat = win32com.client.GetActiveObject("AcroExch.App")
+                except Exception:
+                    pass
+            if acrobat is not None:
+                num_docs = acrobat.GetNumAVDocs()
+                for i in range(num_docs):
+                    try:
+                        av_doc = acrobat.GetAVDoc(i)
+                        pd_doc = av_doc.GetPDDoc()
+                        file_path = pd_doc.GetFileName()
+                        name = os.path.basename(file_path) if file_path else f"PDF_{i}"
+                        results.append({
+                            "app": "AcroExch.App",
+                            "app_obj": acrobat,
+                            "pd_doc": pd_doc,
+                            "name": name,
+                            "path": file_path or "",
+                        })
+                    except Exception:
+                        continue
+        except Exception:
+            pass
+
+        return results
+
+    def detect_image_files(self, watch_dirs: list) -> list:
+        """감시 폴더에서 이미지 파일 목록을 반환한다.
+
+        Args:
+            watch_dirs: 감시할 디렉토리 경로 리스트.
+
+        Returns:
+            이미지 파일 정보 dict 리스트.
+            각 항목: {"app": "Image", "app_obj": 파일경로, "name": 파일명, "path": 전체경로}
+        """
+        IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".bmp", ".tiff", ".tif"}
+        results = []
+        for dir_path in watch_dirs:
+            dir_path = os.path.abspath(dir_path)
+            if not os.path.isdir(dir_path):
+                continue
+            for fname in os.listdir(dir_path):
+                ext = os.path.splitext(fname)[1].lower()
+                if ext in IMAGE_EXTS:
+                    full_path = os.path.abspath(os.path.join(dir_path, fname))
+                    results.append({
+                        "app": "Image",
+                        "app_obj": full_path,
+                        "name": fname,
+                        "path": full_path,
+                    })
         return results
 
     @contextmanager

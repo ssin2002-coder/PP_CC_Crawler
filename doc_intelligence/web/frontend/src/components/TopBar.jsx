@@ -14,6 +14,8 @@ const styles = {
     background: connected ? 'var(--color-green)' : '#ff453a',
   }),
   status: { fontSize: '12px', color: 'var(--text-sub)' },
+  warn: { fontSize: '10px', color: 'var(--color-orange)', padding: '2px 8px',
+    background: 'rgba(255, 159, 10, 0.12)', borderRadius: '4px' },
   btnPrimary: {
     background: 'var(--accent-blue)', color: '#fff', border: 'none',
     borderRadius: 'var(--radius-pill)', padding: '5px 14px',
@@ -28,12 +30,22 @@ const styles = {
 export default function TopBar() {
   const documents = useStore((s) => s.documents);
   const comStatus = useStore((s) => s.comStatus);
+  const envStatus = useStore((s) => s.envStatus);
   const connected = comStatus === 'connected';
   return (
     <div style={styles.bar}>
       <div style={styles.left}>
         <span style={styles.title}>Doc Intelligence</span>
         <span style={styles.version}>v0.2</span>
+        {envStatus && !envStatus.tesseract_available && (
+          <span style={styles.warn}>Tesseract 미설치</span>
+        )}
+        {envStatus && !envStatus.acrobat_available && (
+          <span style={styles.warn}>Acrobat COM 미사용{envStatus.pypdf_available ? ' (pypdf 대체)' : ''}</span>
+        )}
+        {envStatus && !envStatus.com_available && (
+          <span style={styles.warn}>COM 미사용</span>
+        )}
       </div>
       <div style={styles.right}>
         <span style={styles.dot(connected)} />

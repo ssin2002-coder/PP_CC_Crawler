@@ -8,5 +8,8 @@ com:
   max_retries: 3
   timeout_seconds: 10
   poll_interval_seconds: 3
+image:
+  watch_dirs:
+    - "./data/images"
 ui:
   theme: "dark"

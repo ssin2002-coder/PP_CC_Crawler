@@ -3,10 +3,23 @@ fingerprint.py — TF-IDF 핑거프린트 + 템플릿 매칭
 Fingerprinter: 문서에서 핑거프린트 생성, 템플릿 학습/매칭
 """
 import hashlib
+import logging
 
-import numpy as np
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
+try:
+    import numpy as np
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.metrics.pairwise import cosine_similarity
+    _ML_AVAILABLE = True
+except ImportError as _e:
+    np = None
+    TfidfVectorizer = None
+    cosine_similarity = None
+    _ML_AVAILABLE = False
+    logging.getLogger(__name__).warning(
+        "numpy/scikit-learn 미인식 — 템플릿 매칭 비활성화 (%s). "
+        "같은 인터프리터에 'python -m pip install numpy scikit-learn' 후 재시작.",
+        _e,
+    )
 
 from doc_intelligence.engine import Fingerprint
 
@@ -17,7 +30,7 @@ class Fingerprinter:
 
     def __init__(self, storage=None):
         self.storage = storage
-        self._vectorizer = TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 4))
+        self._vectorizer = TfidfVectorizer(analyzer="char_wb", ngram_range=(2, 4)) if _ML_AVAILABLE else None
         self._corpus = []        # 학습된 텍스트 목록
         self._template_ids = []  # 대응 template ID
 
@@ -30,7 +43,7 @@ class Fingerprinter:
             labels = list(label_positions.keys())
             self._corpus.append(" ".join(labels))
             self._template_ids.append(t["id"])
-        if self._corpus:
+        if self._corpus and self._vectorizer is not None:
             self._vectorizer.fit(self._corpus)
 
     # ──────────────────────────────────────────────
@@ -63,8 +76,8 @@ class Fingerprinter:
         return " ".join(label_positions.keys())
 
     def _vectorize(self, text: str) -> list:
-        """단일 텍스트를 TF-IDF 벡터로 변환. corpus가 없으면 빈 리스트 반환."""
-        if not self._corpus:
+        """단일 텍스트를 TF-IDF 벡터로 변환. corpus가 없거나 ML 미설치면 빈 리스트."""
+        if not self._corpus or self._vectorizer is None:
             return []
         vec = self._vectorizer.transform([text])
         return vec.toarray()[0].tolist()
@@ -136,7 +149,8 @@ class Fingerprinter:
         text = self._labels_to_text(label_positions)
         self._corpus.append(text)
         self._template_ids.append(template_id)
-        self._vectorizer.fit(self._corpus)
+        if self._vectorizer is not None:
+            self._vectorizer.fit(self._corpus)
 
         return template_id
 
@@ -156,7 +170,7 @@ class Fingerprinter:
             0.60~0.84 : auto=False (후보 제시)
             < 0.60  : template=None
         """
-        if not self._corpus:
+        if not self._corpus or self._vectorizer is None:
             return {"template": None, "score": 0.0, "auto": False}
 
         label_positions = self._extract_labels(doc)

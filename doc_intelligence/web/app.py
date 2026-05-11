@@ -6,8 +6,6 @@ import threading
 import time
 from dataclasses import asdict
 
-import yaml
-
 from flask import Flask
 from flask_socketio import SocketIO
 
@@ -65,8 +63,12 @@ def _build_doc_summary(doc_id: str, entry: dict, template_names: dict) -> dict:
 
 
 def _load_watch_dirs() -> list:
-    """config.yaml에서 image.watch_dirs를 로드한다."""
+    """config.yaml에서 image.watch_dirs를 로드한다. pyyaml 미설치 시 빈 리스트."""
     config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.yaml")
+    try:
+        import yaml  # lazy: pyyaml 없으면 ImportError 흡수
+    except ImportError:
+        return []
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f)

@@ -626,48 +626,47 @@ class ImageParser(BaseParser):
             curr.sort(key=lambda w: w.get("x", 0))
             raw_rows.append(curr)
 
-        # 2단계: 가장 많은 x-gap을 가진 행(=헤더 행)에서 열 경계 추출
+        # 2단계: 헤더 행 자동 감지 — 가장 넓게 퍼진 행 (x범위 최대)
         best_row = None
-        best_gaps = 0
+        best_spread = 0
         for row in raw_rows:
-            if len(row) < 3:
+            if len(row) < 5:
                 continue
-            gaps = 0
-            for i in range(1, len(row)):
-                if row[i].get("x", 0) - (row[i-1].get("x", 0) + row[i-1].get("w", 0)) > 60:
-                    gaps += 1
-            if gaps >= best_gaps:
-                best_gaps = gaps
+            xs = [w.get("x", 0) for w in row]
+            spread = max(xs) - min(xs)
+            if spread > best_spread:
+                best_spread = spread
                 best_row = row
 
-        if best_row is None or best_gaps < 2:
-            # fallback: 단순 행별 텍스트 합치기
-            grid_rows = []
-            for row in raw_rows:
-                text = " ".join(w.get("text", "") for w in row)
-                grid_rows.append([text])
+        if best_row is None:
+            grid_rows = [[" ".join(w.get("text", "") for w in row)] for row in raw_rows]
             return grid_rows, 1
 
-        # 헤더 행에서 열 시작 x좌표 추출 (gap > 60px 기준)
-        col_starts = [best_row[0].get("x", 0)]
-        for i in range(1, len(best_row)):
-            gap = best_row[i].get("x", 0) - (best_row[i-1].get("x", 0) + best_row[i-1].get("w", 0))
-            if gap > 60:
-                col_starts.append(best_row[i].get("x", 0))
-        num_cols = len(col_starts)
+        # 헤더 워드의 x 중심을 열 앵커로 사용
+        col_anchors = []
+        for w in best_row:
+            cx = w.get("x", 0) + w.get("w", 0) // 2
+            col_anchors.append(cx)
+        num_cols = len(col_anchors)
 
         def find_col(x):
-            for i in range(num_cols - 1, -1, -1):
-                if x >= col_starts[i] - 30:
-                    return i
-            return 0
+            """x좌표에 가장 가까운 열 앵커 찾기"""
+            min_dist = float("inf")
+            best = 0
+            for i, anchor in enumerate(col_anchors):
+                d = abs(x - anchor)
+                if d < min_dist:
+                    min_dist = d
+                    best = i
+            return best
 
-        # 3단계: 모든 행을 열 경계에 매핑
+        # 3단계: 모든 행을 열 앵커에 매핑
         grid_rows = []
         for row in raw_rows:
             cells = [""] * num_cols
             for w in row:
-                ci = find_col(w.get("x", 0))
+                wx = w.get("x", 0) + w.get("w", 0) // 2
+                ci = find_col(wx)
                 if cells[ci]:
                     cells[ci] += " " + w.get("text", "")
                 else:

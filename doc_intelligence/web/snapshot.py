@@ -1,5 +1,5 @@
 # doc_intelligence/web/snapshot.py
-"""윈도우 캡처 — pyautogui 기반 스냅샷"""
+"""윈도우 캡처 — mss 기반 스냅샷"""
 import base64
 import io
 import logging
@@ -7,11 +7,13 @@ import logging
 logger = logging.getLogger(__name__)
 
 try:
-    import pyautogui
-    _PYAUTOGUI_AVAILABLE = True
+    import mss
+    from PIL import Image
+    _MSS_AVAILABLE = True
 except ImportError:
-    pyautogui = None
-    _PYAUTOGUI_AVAILABLE = False
+    mss = None
+    Image = None
+    _MSS_AVAILABLE = False
 
 try:
     import win32gui
@@ -39,7 +41,7 @@ def _get_window_rect(filename: str):
 
 
 def capture_window_snapshot(filename: str) -> str | None:
-    if pyautogui is None:
+    if not _MSS_AVAILABLE:
         return None
     rect = _get_window_rect(filename)
     if rect is None:
@@ -48,10 +50,13 @@ def capture_window_snapshot(filename: str) -> str | None:
     width = right - left
     height = bottom - top
     try:
-        screenshot = pyautogui.screenshot(region=(left, top, width, height))
-        buf = io.BytesIO()
-        screenshot.save(buf, format="PNG")
-        return base64.b64encode(buf.getvalue()).decode("utf-8")
+        with mss.mss() as sct:
+            region = {"left": left, "top": top, "width": width, "height": height}
+            raw = sct.grab(region)
+            img = Image.frombytes("RGB", raw.size, raw.rgb)
+            buf = io.BytesIO()
+            img.save(buf, format="PNG")
+            return base64.b64encode(buf.getvalue()).decode("utf-8")
     except Exception as e:
         logger.warning("스냅샷 캡처 실패: %s", e)
         return None

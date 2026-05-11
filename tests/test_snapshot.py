@@ -4,17 +4,17 @@ from doc_intelligence.web.snapshot import capture_window_snapshot
 
 
 def test_capture_returns_base64_string():
-    fake_img = MagicMock()
-    import io
-    buf = io.BytesIO()
-    from PIL import Image
-    Image.new("RGB", (1, 1), "white").save(buf, format="PNG")
-    fake_img_bytes = buf.getvalue()
+    fake_raw = MagicMock()
+    fake_raw.size = (100, 100)
+    fake_raw.rgb = b"\x00" * (100 * 100 * 3)
 
-    with patch("doc_intelligence.web.snapshot.pyautogui") as mock_pyautogui:
-        mock_screenshot = MagicMock()
-        mock_screenshot.save = MagicMock(side_effect=lambda buf, **kw: buf.write(fake_img_bytes))
-        mock_pyautogui.screenshot.return_value = mock_screenshot
+    mock_sct = MagicMock()
+    mock_sct.grab.return_value = fake_raw
+    mock_sct.__enter__ = MagicMock(return_value=mock_sct)
+    mock_sct.__exit__ = MagicMock(return_value=False)
+
+    with patch("doc_intelligence.web.snapshot.mss") as mock_mss_mod:
+        mock_mss_mod.mss.return_value = mock_sct
         with patch("doc_intelligence.web.snapshot._get_window_rect", return_value=(0, 0, 100, 100)):
             result = capture_window_snapshot("test.xlsx")
 

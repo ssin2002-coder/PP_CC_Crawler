@@ -626,54 +626,76 @@ class ImageParser(BaseParser):
             curr.sort(key=lambda w: w.get("x", 0))
             raw_rows.append(curr)
 
-        # 2단계: 헤더 행 자동 감지 — 가장 넓게 퍼진 행 (x범위 최대)
-        best_row = None
+        # 2단계: 헤더 행 감지 (가장 넓게 퍼진 5+ 워드 행)
+        header_idx = -1
         best_spread = 0
-        for row in raw_rows:
+        for ri, row in enumerate(raw_rows):
             if len(row) < 5:
                 continue
             xs = [w.get("x", 0) for w in row]
             spread = max(xs) - min(xs)
             if spread > best_spread:
                 best_spread = spread
-                best_row = row
+                header_idx = ri
 
-        if best_row is None:
+        if header_idx < 0:
             grid_rows = [[" ".join(w.get("text", "") for w in row)] for row in raw_rows]
             return grid_rows, 1
 
-        # 헤더 워드의 x 중심을 열 앵커로 사용
-        col_anchors = []
-        for w in best_row:
-            cx = w.get("x", 0) + w.get("w", 0) // 2
-            col_anchors.append(cx)
-        num_cols = len(col_anchors)
+        header_row = raw_rows[header_idx]
+        num_cols = len(header_row)
+
+        # 3단계: 데이터 행(헤더 이후)에서 실제 열 x범위 수집
+        data_rows = raw_rows[header_idx + 1:]
+        col_x_samples = [[] for _ in range(num_cols)]
+
+        # 헤더 열 경계 (초기) — 인접 헤더 워드의 중간점
+        header_centers = [w.get("x", 0) + w.get("w", 0) // 2 for w in header_row]
+        col_splits = [0]
+        for i in range(1, num_cols):
+            col_splits.append((header_centers[i - 1] + header_centers[i]) // 2)
+        col_splits.append(99999)
+
+        def find_col_split(x):
+            for i in range(num_cols - 1, -1, -1):
+                if x >= col_splits[i]:
+                    return i
+            return 0
+
+        # 데이터 행으로 열별 실제 x 범위 수집
+        for row in data_rows:
+            for w in row:
+                wx = w.get("x", 0)
+                ci = find_col_split(wx)
+                col_x_samples[ci].append(wx)
+
+        # 데이터 기반 열 경계 재계산 (인접 열의 max/min 중간점)
+        col_bounds = [0]
+        for i in range(1, num_cols):
+            left_max = max(col_x_samples[i - 1]) if col_x_samples[i - 1] else col_splits[i]
+            right_min = min(col_x_samples[i]) if col_x_samples[i] else col_splits[i]
+            col_bounds.append((left_max + right_min) // 2)
+        col_bounds.append(99999)
 
         def find_col(x):
-            """x좌표에 가장 가까운 열 앵커 찾기"""
-            min_dist = float("inf")
-            best = 0
-            for i, anchor in enumerate(col_anchors):
-                d = abs(x - anchor)
-                if d < min_dist:
-                    min_dist = d
-                    best = i
-            return best
+            for i in range(num_cols - 1, -1, -1):
+                if x >= col_bounds[i]:
+                    return i
+            return 0
 
-        # 3단계: 모든 행을 열 앵커에 매핑
+        # 4단계: 모든 행을 데이터 기반 열 경계에 매핑
+        import re
         grid_rows = []
         for row in raw_rows:
             cells = [""] * num_cols
             for w in row:
-                wx = w.get("x", 0) + w.get("w", 0) // 2
-                ci = find_col(wx)
+                ci = find_col(w.get("x", 0))
                 if cells[ci]:
                     cells[ci] += " " + w.get("text", "")
                 else:
                     cells[ci] = w.get("text", "")
 
-            # 후처리: col0에 "숫자 텍스트"가 합쳐진 경우 분리 → col0=숫자, col1=텍스트
-            import re
+            # 후처리: col0에 "숫자 텍스트" → 분리
             if num_cols >= 2 and cells[0] and not cells[1]:
                 m = re.match(r"^(\d+)\s+(.+)$", cells[0].strip())
                 if m:

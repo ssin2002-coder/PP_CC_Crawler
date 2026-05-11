@@ -210,6 +210,49 @@ function TextListView({ cells, label }) {
   );
 }
 
+function OcrGridView({ cells }) {
+  // ocr_tbl:R{row}C{col} 형식이면 그리드, 아니면 리스트
+  const hasGrid = cells.some(c => c.address.startsWith('ocr_tbl:'));
+  if (!hasGrid) return <TextListView cells={cells} label="OCR 결과" />;
+
+  const grid = {};
+  let maxR = 0, maxC = 0;
+  cells.forEach(cell => {
+    const m = cell.address.match(/R(\d+)C(\d+)/);
+    if (m) {
+      const r = parseInt(m[1]), c = parseInt(m[2]);
+      if (!grid[r]) grid[r] = {};
+      grid[r][c] = cell.value;
+      maxR = Math.max(maxR, r);
+      maxC = Math.max(maxC, c);
+    }
+  });
+
+  return (
+    <div>
+      <div style={{ fontSize: '11px', color: 'var(--text-sub)', marginBottom: '6px', fontWeight: 500 }}>
+        OCR 결과 ({maxR + 1}행 × {maxC + 1}열)
+      </div>
+      <table style={{ borderCollapse: 'collapse', fontSize: '11px', width: '100%' }}>
+        <tbody>
+          {Array.from({ length: maxR + 1 }, (_, r) => (
+            <tr key={r}>
+              {Array.from({ length: maxC + 1 }, (_, c) => (
+                <td key={c} style={{
+                  border: '1px solid var(--border)', padding: '3px 6px',
+                  color: 'var(--text-main)', whiteSpace: 'nowrap',
+                  background: r === 0 ? 'var(--bg-panel)' : 'transparent',
+                  fontWeight: r === 0 ? 500 : 400,
+                }}>{grid[r]?.[c] ?? ''}</td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 export default function DataTable() {
   const selectedDocId = useStore((s) => s.selectedDocId);
   const parsedData = useStore((s) => s.parsedData[selectedDocId]);
@@ -251,14 +294,12 @@ export default function DataTable() {
   }
 
   return (
-    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div style={{ flex: 1, overflow: 'auto', padding: '8px' }}>
+    <div style={{ padding: '8px' }}>
         {fileType === 'excel' && <ExcelGrid cells={cells} structure={structure} />}
         {fileType === 'word' && <WordView cells={cells} />}
         {fileType === 'pdf' && <TextListView cells={cells} label="PDF 텍스트" />}
-        {fileType === 'image' && <TextListView cells={cells} label="OCR 결과" />}
+        {fileType === 'image' && <OcrGridView cells={cells} />}
         {!['excel', 'word', 'pdf', 'image'].includes(fileType) && <ExcelGrid cells={cells} structure={structure} />}
-      </div>
     </div>
   );
 }

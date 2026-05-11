@@ -578,6 +578,58 @@ class ImageParser(BaseParser):
             metadata={"lang": "kor"},
         )
 
+    @staticmethod
+    def _ocr_postprocess(text: str) -> str:
+        """OCR 오인식 보정 — 기술 문서 특수문자/단위."""
+        import re
+        corrections = {
+            "두꼐": "두께", "두게": "두께",
+            "Q/sq": "Ω/sq", "0/sq": "Ω/sq",
+            "니m": "μm", "um": "μm",
+            "20.5": "≥0.5", "20.5u": "≥0.5μ",
+            ">=": "≥", "<=": "≤",
+        }
+        for wrong, right in corrections.items():
+            text = text.replace(wrong, right)
+        return text
+
+    @staticmethod
+    def _build_ocr_grid(lines: list) -> tuple:
+        """OCR 라인을 y좌표 기반 행/열로 구조화한다.
+
+        반환: (rows: list[list[dict]], row_ys: list[int])
+        각 row는 x 정렬된 word 리스트.
+        """
+        # 모든 워드를 플랫하게 수집
+        all_words = []
+        for line_data in lines:
+            for word in line_data.get("words", []):
+                all_words.append(word)
+        if not all_words:
+            return [], []
+
+        # y좌표 기준으로 행 클러스터링 (허용 오차 10px)
+        all_words.sort(key=lambda w: (w.get("y", 0), w.get("x", 0)))
+        rows = []
+        current_row = [all_words[0]]
+        current_y = all_words[0].get("y", 0)
+
+        for w in all_words[1:]:
+            wy = w.get("y", 0)
+            if abs(wy - current_y) <= 10:
+                current_row.append(w)
+            else:
+                current_row.sort(key=lambda w: w.get("x", 0))
+                rows.append(current_row)
+                current_row = [w]
+                current_y = wy
+        if current_row:
+            current_row.sort(key=lambda w: w.get("x", 0))
+            rows.append(current_row)
+
+        row_ys = [row[0].get("y", 0) for row in rows]
+        return rows, row_ys
+
     def _windows_ocr_parse(self, file_path: str) -> ParsedDocument:
         """Windows 내장 OCR로 이미지를 파싱한다."""
         import os
@@ -591,27 +643,30 @@ class ImageParser(BaseParser):
         all_cells: list[CellData] = []
         raw_parts: list[str] = []
 
-        for line_data in lines:
-            text = line_data.get("text", "").strip()
-            if not text:
-                continue
-            words = line_data.get("words", [])
-            x = words[0].get("x", 0) if words else 0
-            y = words[0].get("y", 0) if words else 0
-            address = f"ocr:{x},{y}"
-            raw_parts.append(text)
-            all_cells.append(CellData(
-                address=address,
-                value=text,
-                data_type="text",
-                neighbors={"x": x, "y": y, "ocr_engine": "windows"},
-            ))
+        # 표 구조화
+        rows, row_ys = self._build_ocr_grid(lines)
+
+        for r_idx, row_words in enumerate(rows):
+            for c_idx, word in enumerate(row_words):
+                text = self._ocr_postprocess(word.get("text", "").strip())
+                if not text:
+                    continue
+                x = word.get("x", 0)
+                y = word.get("y", 0)
+                address = f"ocr_tbl:R{r_idx}C{c_idx}"
+                raw_parts.append(text)
+                all_cells.append(CellData(
+                    address=address,
+                    value=text,
+                    data_type="text",
+                    neighbors={"x": x, "y": y, "row": r_idx, "col": c_idx, "ocr_engine": "windows"},
+                ))
 
         return ParsedDocument(
             file_path=file_path,
             file_type="image",
             raw_text=" ".join(raw_parts),
-            structure={"ocr_blocks": len(all_cells)},
+            structure={"ocr_blocks": len(all_cells), "ocr_rows": len(rows)},
             cells=all_cells,
             metadata={"lang": "ko", "ocr_engine": "windows"},
         )

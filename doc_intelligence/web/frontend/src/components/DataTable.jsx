@@ -240,10 +240,12 @@ function OcrGridView({ cells }) {
               {Array.from({ length: maxC + 1 }, (_, c) => (
                 <td key={c} style={{
                   border: '1px solid var(--border)', padding: '3px 6px',
-                  color: 'var(--text-main)', whiteSpace: 'nowrap',
+                  color: (r > 0 && !grid[r]?.[c]) ? 'var(--text-sub)' : 'var(--text-main)',
+                  whiteSpace: 'nowrap',
                   background: r === 0 ? 'var(--bg-panel)' : 'transparent',
                   fontWeight: r === 0 ? 500 : 400,
-                }}>{grid[r]?.[c] ?? ''}</td>
+                  fontStyle: (r > 0 && !grid[r]?.[c]) ? 'italic' : 'normal',
+                }}>{grid[r]?.[c] || (r > 0 ? '—' : '')}</td>
               ))}
             </tr>
           ))}

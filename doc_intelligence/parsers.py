@@ -671,6 +671,15 @@ class ImageParser(BaseParser):
                     cells[ci] += " " + w.get("text", "")
                 else:
                     cells[ci] = w.get("text", "")
+
+            # 후처리: col0에 "숫자 텍스트"가 합쳐진 경우 분리 → col0=숫자, col1=텍스트
+            import re
+            if num_cols >= 2 and cells[0] and not cells[1]:
+                m = re.match(r"^(\d+)\s+(.+)$", cells[0].strip())
+                if m:
+                    cells[0] = m.group(1)
+                    cells[1] = m.group(2)
+
             grid_rows.append(cells)
 
         return grid_rows, num_cols

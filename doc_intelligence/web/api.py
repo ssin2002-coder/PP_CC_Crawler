@@ -4,7 +4,8 @@ import hashlib
 import io
 import os
 from dataclasses import asdict
-from flask import Blueprint, Response, jsonify, request
+from flask import Blueprint, Response, current_app, jsonify, request
+import yaml
 from doc_intelligence.engine import Engine
 from doc_intelligence.fingerprint import Fingerprinter
 from doc_intelligence.parsers import ImageParser
@@ -195,6 +196,90 @@ def create_api_blueprint(engine: Engine, fingerprinter: Fingerprinter, doc_cache
             "source": "api",
         }
         return jsonify({"doc_id": doc_id, "status": "parsed"})
+
+    @api.route("/documents/detect", methods=["POST"])
+    def detect_documents():
+        """감시 폴더를 동기 스캔하여 새 파일을 파싱·캐시한다."""
+        config_path = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "config.yaml"
+        )
+        image_dirs: list = []
+        pdf_dirs: list = []
+        try:
+            with open(config_path, "r", encoding="utf-8") as f:
+                cfg = yaml.safe_load(f) or {}
+            image_dirs = cfg.get("image", {}).get("watch_dirs", []) or []
+            pdf_dirs = cfg.get("pdf", {}).get("watch_dirs", []) or []
+        except Exception as exc:
+            print(f"[detect] config load failed: {exc}")
+
+        com_worker = current_app.config.get("com_worker")
+        if com_worker is None:
+            return jsonify({"error": "com_worker not configured"}), 500
+
+        image_files = com_worker.detect_image_files(image_dirs) if image_dirs else []
+        pdf_files = com_worker.detect_pdf_files(pdf_dirs) if pdf_dirs else []
+        all_files = image_files + pdf_files
+
+        from doc_intelligence.parsers import PdfParser
+        detected = len(all_files)
+        newly_parsed = 0
+        already_cached = 0
+
+        for entry in all_files:
+            file_path = entry.get("path", "")
+            if not file_path:
+                continue
+            doc_id = hashlib.md5(file_path.encode("utf-8")).hexdigest()
+            if doc_id in doc_cache and doc_cache[doc_id].get("parsed"):
+                already_cached += 1
+                continue
+            app_type = entry.get("app", "")
+            try:
+                if app_type == "Image":
+                    parser = ImageParser()
+                    parsed = parser.parse_from_com(file_path)
+                    snapshot = None
+                    info_app = "Image"
+                elif app_type == "PdfFile":
+                    parsed = PdfParser.parse_from_file(file_path)
+                    snapshot = _render_pdf_preview(file_path)
+                    info_app = "AcroExch.App"
+                else:
+                    continue
+
+                if parsed.metadata.get("fallback"):
+                    doc_cache[doc_id] = {
+                        "info": {"app": info_app, "name": os.path.basename(file_path), "path": file_path},
+                        "parsed": parsed,
+                        "fingerprint": {"labels": []},
+                        "match": {"template": None, "score": 0.0, "auto": False},
+                        "snapshot_b64": snapshot,
+                        "confirmed": False,
+                        "source": "api",
+                    }
+                else:
+                    fp_result = fingerprinter.generate(parsed)
+                    match_result = fingerprinter.match(parsed)
+                    doc_cache[doc_id] = {
+                        "info": {"app": info_app, "name": os.path.basename(file_path), "path": file_path},
+                        "parsed": parsed,
+                        "fingerprint": fp_result,
+                        "match": match_result,
+                        "snapshot_b64": snapshot,
+                        "confirmed": False,
+                        "source": "api",
+                    }
+                newly_parsed += 1
+            except Exception as exc:
+                print(f"[detect] parse fail ({file_path}): {exc}")
+                continue
+
+        return jsonify({
+            "detected": detected,
+            "newly_parsed": newly_parsed,
+            "already_cached": already_cached,
+        }), 200
 
     @api.route("/status", methods=["GET"])
     def get_status():

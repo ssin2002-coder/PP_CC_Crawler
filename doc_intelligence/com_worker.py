@@ -169,6 +169,34 @@ class ComWorker:
                     })
         return results
 
+    def detect_pdf_files(self, watch_dirs: list) -> list:
+        """감시 폴더에서 PDF 파일 목록을 반환한다.
+
+        Args:
+            watch_dirs: 감시할 디렉토리 경로 리스트.
+
+        Returns:
+            PDF 파일 정보 dict 리스트.
+            각 항목: {"app": "PdfFile", "app_obj": 파일경로, "name": 파일명, "path": 전체경로}
+        """
+        PDF_EXTS = {".pdf"}
+        results = []
+        for dir_path in watch_dirs:
+            dir_path = os.path.abspath(dir_path)
+            if not os.path.isdir(dir_path):
+                continue
+            for fname in os.listdir(dir_path):
+                ext = os.path.splitext(fname)[1].lower()
+                if ext in PDF_EXTS:
+                    full_path = os.path.abspath(os.path.join(dir_path, fname))
+                    results.append({
+                        "app": "PdfFile",
+                        "app_obj": full_path,
+                        "name": fname,
+                        "path": full_path,
+                    })
+        return results
+
     @contextmanager
     def com_session(self):
         """STA COM 세션 컨텍스트 매니저.

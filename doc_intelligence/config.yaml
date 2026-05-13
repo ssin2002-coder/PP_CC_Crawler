@@ -11,5 +11,8 @@ com:
 image:
   watch_dirs:
     - "./data/images"
+pdf:
+  watch_dirs:
+    - "./data/pdfs"
 ui:
   theme: "dark"

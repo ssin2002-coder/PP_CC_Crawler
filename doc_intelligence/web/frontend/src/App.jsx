@@ -1,7 +1,7 @@
 import TopBar from './components/TopBar';
 import FileList from './components/FileList';
 import FingerInfo from './components/FingerInfo';
-import DataTable from './components/DataTable';
+import MarkdownView, { buildMarkdown } from './components/MarkdownView';
 import { useStore } from './stores/store';
 
 function DetailPreview({ docId, documents }) {
@@ -24,9 +24,66 @@ function DetailPreview({ docId, documents }) {
   );
 }
 
+function stripExt(name) {
+  if (!name) return '문서';
+  const idx = name.lastIndexOf('.');
+  return idx > 0 ? name.slice(0, idx) : name;
+}
+
+function downloadBlob(filename, text, mime) {
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function ExportToolbar({ docName, parsedData }) {
+  const canExport = !!parsedData;
+  const handleExport = (ext, mime) => {
+    if (!canExport) return;
+    const md = buildMarkdown(parsedData, docName || '문서');
+    const base = stripExt(docName || '문서');
+    downloadBlob(`${base}.${ext}`, md, mime);
+  };
+  const btn = {
+    padding: '4px 10px', fontSize: '11px',
+    background: 'var(--bg-card)', color: 'var(--text-main)',
+    border: '1px solid var(--border)', borderRadius: 'var(--radius-pill)',
+    cursor: canExport ? 'pointer' : 'not-allowed',
+    opacity: canExport ? 1 : 0.5, fontWeight: 500,
+  };
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', gap: '8px',
+      padding: '6px 12px', borderBottom: '1px solid var(--border)',
+      background: 'var(--bg-panel)', flexShrink: 0,
+    }}>
+      <span style={{
+        fontSize: '12px', color: 'var(--text-main)', fontWeight: 500,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+        flex: 1, minWidth: 0,
+      }}>{docName || '문서'}</span>
+      <button onClick={() => handleExport('md', 'text/markdown;charset=utf-8')} disabled={!canExport} style={btn}>
+        📄 .md 내보내기
+      </button>
+      <button onClick={() => handleExport('txt', 'text/plain;charset=utf-8')} disabled={!canExport} style={btn}>
+        📝 .txt 내보내기
+      </button>
+    </div>
+  );
+}
+
 export default function App() {
   const selectedDocId = useStore((s) => s.selectedDocId);
   const documents = useStore((s) => s.documents);
+  const parsedData = useStore((s) => (selectedDocId ? s.parsedData[selectedDocId] : null));
+  const selectedDoc = documents.find((d) => d.id === selectedDocId);
+  const docName = selectedDoc?.name || '';
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       <TopBar />
@@ -39,8 +96,9 @@ export default function App() {
             <>
               <FingerInfo />
               <DetailPreview docId={selectedDocId} documents={documents} />
-              <div style={{ flex: 1, overflow: 'auto', minHeight: 0 }}>
-                <DataTable />
+              <ExportToolbar docName={docName} parsedData={parsedData} />
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
+                <MarkdownView parsedData={parsedData} docName={docName} />
               </div>
             </>
           ) : (

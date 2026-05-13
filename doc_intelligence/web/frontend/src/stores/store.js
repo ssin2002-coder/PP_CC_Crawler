@@ -27,4 +27,13 @@ export const useStore = create((set, get) => ({
     if (!res.ok) throw new Error(`documents fetch failed: ${res.status}`);
     set({ documents: await res.json() });
   },
+  detectFiles: async () => {
+    const res = await fetch('/api/documents/detect', { method: 'POST' });
+    if (!res.ok) {
+      let msg = `${res.status}`;
+      try { const j = await res.json(); if (j?.message || j?.detail) msg = j.message || j.detail; } catch {}
+      throw new Error(msg);
+    }
+    return await res.json();
+  },
 }));

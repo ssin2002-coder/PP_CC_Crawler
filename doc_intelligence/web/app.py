@@ -16,6 +16,7 @@ from doc_intelligence.parsers import ExcelParser, WordParser, PowerPointParser, 
 from doc_intelligence.fingerprint import Fingerprinter
 from doc_intelligence.engine import Engine
 from doc_intelligence.web.snapshot import capture_window_snapshot
+from doc_intelligence.web.api import _render_pdf_preview
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +26,7 @@ _APP_TO_PARSER = {
     "PowerPoint.Application": PowerPointParser,
     "AcroExch.App": PdfParser,
     "Image": ImageParser,
+    "PdfFile": PdfParser,
 }
 
 _doc_cache: dict[str, dict] = {}
@@ -64,13 +66,24 @@ def _build_doc_summary(doc_id: str, entry: dict, template_names: dict) -> dict:
     }
 
 
-def _load_watch_dirs() -> list:
+def _load_image_watch_dirs() -> list:
     """config.yaml에서 image.watch_dirs를 로드한다."""
     config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.yaml")
     try:
         with open(config_path, "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f)
         return cfg.get("image", {}).get("watch_dirs", [])
+    except Exception:
+        return []
+
+
+def _load_pdf_watch_dirs() -> list:
+    """config.yaml에서 pdf.watch_dirs를 로드한다."""
+    config_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "config.yaml")
+    try:
+        with open(config_path, "r", encoding="utf-8") as f:
+            cfg = yaml.safe_load(f)
+        return cfg.get("pdf", {}).get("watch_dirs", [])
     except Exception:
         return []
 
@@ -95,9 +108,14 @@ def _polling_loop(com_worker, engine, fingerprinter, socketio, interval=3):
                 docs = com_worker.detect_open_documents()
 
                 # 이미지 파일 감지
-                watch_dirs = _load_watch_dirs()
-                if watch_dirs:
-                    docs.extend(com_worker.detect_image_files(watch_dirs))
+                image_watch_dirs = _load_image_watch_dirs()
+                if image_watch_dirs:
+                    docs.extend(com_worker.detect_image_files(image_watch_dirs))
+
+                # PDF 파일 감지
+                pdf_watch_dirs = _load_pdf_watch_dirs()
+                if pdf_watch_dirs:
+                    docs.extend(com_worker.detect_pdf_files(pdf_watch_dirs))
 
                 print(f"[polling] detected: {len(docs)}", flush=True)
                 current_ids = set()
@@ -121,7 +139,9 @@ def _polling_loop(com_worker, engine, fingerprinter, socketio, interval=3):
                         doc_obj = doc_info.get("doc_obj")
 
                         # 개별 문서 객체 전달 (다중 파일 지원)
-                        if app_type == "AcroExch.App":
+                        if app_type == "PdfFile":
+                            parsed = PdfParser.parse_from_file(file_path)
+                        elif app_type == "AcroExch.App":
                             pd_doc = doc_info.get("pd_doc")
                             parsed = parser.parse_from_com(com_app, pd_doc=pd_doc)
                         elif doc_obj is not None:
@@ -131,9 +151,18 @@ def _polling_loop(com_worker, engine, fingerprinter, socketio, interval=3):
 
                         fp_result = fingerprinter.generate(parsed)
                         match_result = fingerprinter.match(parsed)
-                        snapshot = capture_window_snapshot(doc_info.get("name", ""))
+                        if app_type == "PdfFile":
+                            snapshot = _render_pdf_preview(file_path)
+                            info_entry = {
+                                "app": "AcroExch.App",
+                                "name": doc_info.get("name", ""),
+                                "path": file_path,
+                            }
+                        else:
+                            snapshot = capture_window_snapshot(doc_info.get("name", ""))
+                            info_entry = {k: v for k, v in doc_info.items() if k not in ("app_obj", "pd_doc", "doc_obj")}
                         _doc_cache[doc_id] = {
-                            "info": {k: v for k, v in doc_info.items() if k not in ("app_obj", "pd_doc", "doc_obj")},
+                            "info": info_entry,
                             "parsed": parsed,
                             "fingerprint": fp_result,
                             "match": match_result,

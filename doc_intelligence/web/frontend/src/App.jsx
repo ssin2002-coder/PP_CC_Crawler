@@ -78,12 +78,56 @@ function ExportToolbar({ docName, parsedData }) {
   );
 }
 
+const pulseKeyframesApp = `@keyframes app-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }`;
+
+function PendingPane({ doc }) {
+  const parseDocument = useStore((s) => s.parseDocument);
+  const ps = doc.parsed_state;
+  let content;
+  if (ps === 'parsing') {
+    content = (
+      <div style={{ animation: 'app-pulse 1.2s ease-in-out infinite', fontSize: '14px', color: 'var(--text-sub)' }}>
+        파싱 중...
+      </div>
+    );
+  } else if (ps === 'error') {
+    content = (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+        <div style={{ fontSize: '14px', color: '#ff453a', textAlign: 'center', maxWidth: '480px' }}>
+          ⚠ 파싱 실패 — {doc.error || '알 수 없는 오류'}
+        </div>
+        <button onClick={() => { parseDocument(doc.id).catch(() => {}); }} style={{
+          padding: '6px 16px', fontSize: '12px',
+          background: 'var(--accent-blue)', color: '#fff',
+          border: 'none', borderRadius: 'var(--radius-pill)', cursor: 'pointer', fontWeight: 500,
+        }}>다시 시도</button>
+      </div>
+    );
+  } else {
+    content = (
+      <div style={{ fontSize: '14px', color: 'var(--text-sub)' }}>
+        클릭하면 파싱을 시작합니다
+      </div>
+    );
+  }
+  return (
+    <div style={{
+      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
+      flexDirection: 'column', padding: '24px',
+    }}>
+      <style>{pulseKeyframesApp}</style>
+      {content}
+    </div>
+  );
+}
+
 export default function App() {
   const selectedDocId = useStore((s) => s.selectedDocId);
   const documents = useStore((s) => s.documents);
   const parsedData = useStore((s) => (selectedDocId ? s.parsedData[selectedDocId] : null));
   const selectedDoc = documents.find((d) => d.id === selectedDocId);
   const docName = selectedDoc?.name || '';
+  const isParsed = selectedDoc?.parsed_state === 'parsed';
   return (
     <div style={{ height: '100vh', display: 'flex', flexDirection: 'column' }}>
       <TopBar />
@@ -92,15 +136,19 @@ export default function App() {
           <FileList />
         </div>
         <div style={{ width: '66.7%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-          {selectedDocId ? (
-            <>
-              <FingerInfo />
-              <DetailPreview docId={selectedDocId} documents={documents} />
-              <ExportToolbar docName={docName} parsedData={parsedData} />
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
-                <MarkdownView parsedData={parsedData} docName={docName} />
-              </div>
-            </>
+          {selectedDocId && selectedDoc ? (
+            isParsed ? (
+              <>
+                <FingerInfo />
+                <DetailPreview docId={selectedDocId} documents={documents} />
+                <ExportToolbar docName={docName} parsedData={parsedData} />
+                <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minHeight: 0 }}>
+                  <MarkdownView parsedData={parsedData} docName={docName} />
+                </div>
+              </>
+            ) : (
+              <PendingPane doc={selectedDoc} />
+            )
           ) : (
             <div style={{
               flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',

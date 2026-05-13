@@ -9,35 +9,46 @@ export default function FileList() {
   const selectDocument = useStore((s) => s.selectDocument);
   const fetchParsed = useStore((s) => s.fetchParsed);
   const refetchDocuments = useStore((s) => s.refetchDocuments);
-  const detectFiles = useStore((s) => s.detectFiles);
-  const [detecting, setDetecting] = useState(false);
+  const scanDocuments = useStore((s) => s.scanDocuments);
+  const parseDocument = useStore((s) => s.parseDocument);
+  const [scanning, setScanning] = useState(false);
   const [status, setStatus] = useState(null);
 
-  const handleSelect = (docId) => { selectDocument(docId); fetchParsed(docId); };
-
-  const showStatus = (kind, message) => {
+  const showStatus = (kind, message, ttl = 3000) => {
     setStatus({ kind, message });
-    setTimeout(() => setStatus(null), 3000);
+    if (ttl > 0) setTimeout(() => setStatus(null), ttl);
   };
 
-  const handleDetect = async () => {
-    if (detecting) return;
-    setDetecting(true);
+  const handleSelect = async (docId) => {
+    selectDocument(docId);
+    const doc = useStore.getState().documents.find((d) => d.id === docId);
+    if (doc?.parsed_state === 'parsed') {
+      fetchParsed(docId);
+      return;
+    }
     try {
-      const result = await detectFiles();
+      await parseDocument(docId);
+    } catch (e) {
+      showStatus('err', `⚠ 파싱 실패: ${e.message}`);
+    }
+  };
+
+  const handleScan = async () => {
+    if (scanning) return;
+    setScanning(true);
+    try {
+      const result = await scanDocuments();
       await refetchDocuments();
       const detected = result?.detected ?? 0;
-      const newlyParsed = result?.newly_parsed ?? 0;
-      const alreadyCached = result?.already_cached ?? 0;
-      if (newlyParsed === 0 && detected === 0) {
-        showStatus('ok', '· 새 파일 없음');
+      if (detected === 0) {
+        showStatus('ok', '· 감지된 파일 없음');
       } else {
-        showStatus('ok', `✓ ${detected}개 감지 (신규 ${newlyParsed}, 기존 ${alreadyCached})`);
+        showStatus('ok', `✓ ${detected}개 감지 — 카드를 클릭해 파싱하세요`);
       }
     } catch (e) {
       showStatus('err', `⚠ 감지 실패: ${e.message}`);
     } finally {
-      setDetecting(false);
+      setScanning(false);
     }
   };
 
@@ -53,17 +64,17 @@ export default function FileList() {
       </div>
 
       <div style={{ padding: '8px 8px 0' }}>
-        <button onClick={handleDetect} disabled={detecting} style={{
+        <button onClick={handleScan} disabled={scanning} style={{
           width: '100%', padding: '8px 0', fontSize: '12px',
-          cursor: detecting ? 'wait' : 'pointer',
-          background: detecting ? 'var(--bg-card)' : 'var(--accent-blue)',
-          color: detecting ? 'var(--text-sub)' : '#fff',
-          border: detecting ? '1px solid var(--border)' : 'none',
+          cursor: scanning ? 'wait' : 'pointer',
+          background: scanning ? 'var(--bg-card)' : 'var(--accent-blue)',
+          color: scanning ? 'var(--text-sub)' : '#fff',
+          border: scanning ? '1px solid var(--border)' : 'none',
           borderRadius: 'var(--radius-pill)',
           fontWeight: 500,
-          opacity: detecting ? 0.7 : 1,
+          opacity: scanning ? 0.7 : 1,
         }}>
-          {detecting ? '감지 중...' : '📂 문서+이미지 감지'}
+          {scanning ? '감지 중...' : '📂 문서+이미지 감지'}
         </button>
         {status && (
           <div style={{

@@ -16,16 +16,6 @@ const styles = {
   status: { fontSize: '12px', color: 'var(--text-sub)' },
   warn: { fontSize: '10px', color: 'var(--color-orange)', padding: '2px 8px',
     background: 'rgba(255, 159, 10, 0.12)', borderRadius: '4px' },
-  btnPrimary: {
-    background: 'var(--accent-blue)', color: '#fff', border: 'none',
-    borderRadius: 'var(--radius-pill)', padding: '5px 14px',
-    fontSize: '12px', cursor: 'pointer', fontWeight: 500,
-  },
-  btnNormal: {
-    background: 'var(--bg-card)', color: 'var(--text-main)', border: '1px solid var(--border)',
-    borderRadius: 'var(--radius-pill)', padding: '5px 14px',
-    fontSize: '12px', cursor: 'pointer',
-  },
 };
 export default function TopBar() {
   const documents = useStore((s) => s.documents);
@@ -52,8 +42,6 @@ export default function TopBar() {
         <span style={styles.status}>
           {connected ? 'COM 연결됨' : 'COM 연결 끊김'} | 문서 {documents.length}개 열림
         </span>
-        <button style={styles.btnPrimary}>+ 영역 연결</button>
-        <button style={styles.btnNormal}>설정</button>
       </div>
     </div>
   );

@@ -22,4 +22,9 @@ export const useStore = create((set, get) => ({
       }
     } catch (e) { console.error('Failed to fetch parsed data:', e); }
   },
+  refetchDocuments: async () => {
+    const res = await fetch('/api/documents');
+    if (!res.ok) throw new Error(`documents fetch failed: ${res.status}`);
+    set({ documents: await res.json() });
+  },
 }));
